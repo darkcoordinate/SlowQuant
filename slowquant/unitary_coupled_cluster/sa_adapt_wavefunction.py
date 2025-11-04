@@ -308,6 +308,7 @@ class WaveFunctionSAADAPT:
                 nloop = i
                 break
             self.ups_layout.excitation_indices.append(self.excitation_pool[max_arg])
+            #self.ups_layout.excitation_indices.append(np.array(excitation_pool[max_arg])-self.num_inactive_spin_orbs)
             self.ups_layout.excitation_operator_type.append(self.excitation_pool_type[max_arg])
             #del self.excitation_pool[max_arg]
             #del self.excitation_pool_type[max_arg]
