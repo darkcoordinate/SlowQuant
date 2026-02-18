@@ -402,11 +402,9 @@ class WaveFunctionSAADAPT:
             #self.run_wf_optimization_2step("CG",  orbital_optimization=orbital_opt, tol=1e-10)
             #self.run_wf_optimization_2step("bfgs",  orbital_optimization=orbital_opt, tol=1e-10)
             #self.run_wf_optimization_2step("cobyla",  orbital_optimization=orbital_opt, tol=1e-10)
-            print("H@I ", end=" ")
             print(skip_optimisation)
             print(skip_optimisation_counter)
             if(skip_optimisation_counter == skip_optimisation):
-                print("HI")
                 self.run_wf_optimization_2step(optimiser_algo,  orbital_optimization=orbital_opt, tol=1e-10)
                 skip_optimisation_counter = 0
                 
