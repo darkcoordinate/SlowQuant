@@ -9,6 +9,7 @@ import numpy as np
 import scipy
 import scipy.optimize
 import matplotlib.pyplot as plt
+#from rich import print
 
 from slowquant.molecularintegrals.integralfunctions import (
     one_electron_integral_transform,
@@ -16,15 +17,16 @@ from slowquant.molecularintegrals.integralfunctions import (
 )
 from slowquant.unitary_coupled_cluster.ci_spaces import get_indexing
 from slowquant.unitary_coupled_cluster.density_matrix import (
-    ReducedDenstiyMatrix,
+    get_electronic_energy,
     get_orbital_gradient,
 )
 from slowquant.unitary_coupled_cluster.operator_state_algebra import (
     construct_ups_state_SA,
     expectation_value,
     expectation_value_SA,
+    expectation_vector_SA,
     get_grad_action_SA,
-    get_grad_for_excitation,
+    #get_grad_for_excitation,
     propagate_state_SA,
     propagate_unitary_SA,
     
@@ -39,9 +41,11 @@ from slowquant.unitary_coupled_cluster.operators import (
     G1_sa,
     G2_1_sa,
     G2_2_sa,
+    FermionicOperator,
 )
 from slowquant.unitary_coupled_cluster.operators import (
     Epq,
+    spin_0i_0a,
     hamiltonian_0i_0a,
     one_elec_op_0i_0a,
 )
@@ -62,6 +66,11 @@ class WaveFunctionSAADAPT:
         ansatz: str,
         ansatz_options: dict[str, Any] | None = None,
         include_active_kappa: bool = False,
+        state_specific = False,
+        target_spin = 0,
+        unpaired_electron = 0,
+        spinfactor = 0.0,
+        specific_state = 0
     ) -> None:
         """Initialize for SA-UPS wave function.
 
@@ -115,6 +124,10 @@ class WaveFunctionSAADAPT:
         self._state_energies = None
         self.ansatz_options = ansatz_options
         self.nm = 0
+        self.target_spin = target_spin
+        self.unpaired = unpaired_electron
+        self.state_specific = state_specific
+        self.specific_state = specific_state
         # Construct spin orbital spaces and indices
         active_space = []
         orbital_counter = 0
@@ -140,8 +153,8 @@ class WaveFunctionSAADAPT:
             else:
                 self.virtual_spin_idx.append(i)
                 self.num_virtual_spin_orbs += 1
-        self.num_active_elec_alpha = self.num_active_elec // 2
-        self.num_active_elec_beta = self.num_active_elec // 2
+        self.num_active_elec_alpha = self.num_active_elec // 2  + (self.unpaired //2)
+        self.num_active_elec_beta = self.num_active_elec // 2 - (self.unpaired //2)
         self.num_inactive_orbs = self.num_inactive_spin_orbs // 2
         self.num_active_orbs = self.num_active_spin_orbs // 2
         self.num_virtual_orbs = self.num_virtual_spin_orbs // 2
@@ -227,27 +240,37 @@ class WaveFunctionSAADAPT:
             self.num_active_elec_alpha,
             self.num_active_elec_beta,
         )
+        #
+        
+        print(f"Number of inactive orbitals     : {self.num_inactive_orbs}")
+        print(f"Number of active orbitals       : {self.num_active_orbs}")
+        print(f"Number of virtual orbitals      : {self.num_virtual_orbs}")
+        print(f"Number of active α electrons    : {self.num_active_elec_alpha}")
+        print(f"Number of active β electrons    : {self.num_active_elec_beta}")
+        
         self.num_det = len(self.ci_info.idx2det)
+        for i in self.ci_info.idx2det:
+            print("{:08b}".format(i))
         # SA details
         self.num_states = len(states[0])
         self.csf_coeffs = np.zeros((self.num_states, self.num_det))  # state vector for each state in SA
         # Loop over all states in SA procedure
+        print(self.csf_coeffs)
         for i, (coeffs, on_vecs) in enumerate(zip(states[0], states[1])):
             if len(coeffs) != len(on_vecs):
                 raise ValueError(
                     f"Mismatch in number of coefficients, {len(coeffs)}, and number of determinants, {len(on_vecs)}. For {coeffs} and {on_vecs}"
                 )
             # Loop over all determinants of a given state
+            print(coeffs)
             for coeff, on_vec in zip(coeffs, on_vecs):
                 if len(on_vec) != self.num_active_spin_orbs:
                     raise ValueError(
                         f"Length of determinant, {len(on_vec)}, does not match number of active spin orbitals, {self.num_active_spin_orbs}. For determinant, {on_vec}"
                     )
-                print(on_vec)
-                print(int(on_vec,2))
-                print(self.ci_info.det2idx)
                 idx = self.ci_info.det2idx[int(on_vec, 2)]
                 self.csf_coeffs[i, idx] = coeff
+        print(self.csf_coeffs)
         self._ci_coeffs = np.copy(self.csf_coeffs)
         for i, coeff_i in enumerate(self.ci_coeffs):
             for j, coeff_j in enumerate(self.ci_coeffs):
@@ -259,28 +282,63 @@ class WaveFunctionSAADAPT:
                         f"state {i} and {j} are not orthogonal got overlap of {coeff_i @ coeff_j}"
                     )
         # Construct UPS Structure
+        self.ups_layout = UpsStructure()
+        if ansatz.lower() == "tups":
+            self.ups_layout.create_tups(self.num_active_orbs, self.ansatz_options)
+        elif ansatz.lower() == "qnp":
+            self.ansatz_options["do_qnp"] = True
+            self.ups_layout.create_tups(self.num_active_orbs, self.ansatz_options)
+        elif ansatz.lower() == "ksafupccgsd":
+            self.ansatz_options["SAGS"] = True
+            self.ansatz_options["GpD"] = True
+            self.ups_layout.create_fUCC(self.num_active_orbs, self.num_active_elec, self.ansatz_options)
+        elif ansatz.lower() == "ksasdsfupccgsd":
+            self.ansatz_options["GpD"] = True
+            self.ups_layout.create_SDSfUCC(self.num_active_orbs, self.num_active_elec, self.ansatz_options)
+        elif ansatz.lower() == "adapt":
+            None
+        else:
+            raise ValueError(f"Got unknown ansatz, {ansatz}")
+        if self.ups_layout.n_params == 0 :
+            self._thetas = []
+        else: 
+            self._thetas = np.zeros(self.ups_layout.n_params).tolist()
+        self.facSpin = spinfactor
+        
         self.excitation_pool: list[tuple[int, ...]] = []
         self.excitation_pool_type: list[str] = []
         self.ups_layout = UpsStructure()
 
-       
-        self._thetas = []
-        for a, i in iterate_t1(self.active_occ_spin_idx, self.active_unocc_spin_idx):
-        #for a, i in iterate_t1_sa(self.active_occ_spin_idx, self.active_unocc_spin_idx):
-            self.excitation_pool.append((int(a),int(i)))            
+
+        
+        for a, i in iterate_t1_generalized(self.num_active_spin_orbs):
+            self.excitation_pool.append((i + self.num_inactive_spin_orbs, a + self.num_inactive_spin_orbs))
             self.excitation_pool_type.append("single")
-        for a, i, b, j in iterate_t2(self.active_occ_spin_idx, self.active_unocc_spin_idx):
-            print(a, i , b, j)
-            self.excitation_pool.append((i, j, a, b))
+        
+        for a, i, b, j in iterate_t2_generalized(self.num_active_spin_orbs):
+            self.excitation_pool.append((i+ self.num_inactive_spin_orbs, j + self.num_inactive_spin_orbs, a + self.num_inactive_spin_orbs, b + self.num_inactive_spin_orbs))
             self.excitation_pool_type.append("double")
-        print(self.ups_layout.excitation_indices)
-        print(self.ups_layout.excitation_operator_type)
+       
+        
         
 
     
-    def do_adapt(self, maxiter=1000, epoch=10e-6):
+    def do_adapt(self, maxiter=500, epoch=1e-6 , orbital_opt: bool = False, optimiser_algo="CG", skip_optimisation=0):
+        
+        
+        
+        #for a, i in iterate_t1(self.active_occ_spin_idx, self.active_unocc_spin_idx):
+        #for a, i in iterate_t1_sa(self.active_occ_spin_idx, self.active_unocc_spin_idx):
+        #    self.excitation_pool.append((int(a),int(i)))            
+        #    self.excitation_pool_type.append("single")
+        #for a, i, b, j in iterate_t2(self.active_occ_spin_idx, self.active_unocc_spin_idx):
+        #    print(a, i , b, j)
+        #    self.excitation_pool.append((i, j, a, b))
+        #    self.excitation_pool_type.append("double")
+        print(optimiser_algo)
         grad = None
         nloop = 0
+        skip_optimisation_counter = 0
         for i in range(maxiter):
             grad = self.calculate_derivative_of_operator_pool()
             print()
@@ -298,57 +356,120 @@ class WaveFunctionSAADAPT:
             for i in range(len(grad)):
                 
                 print(
-                    f"------GP{str(grad[i]).center(27)} | {str(self.excitation_pool[i]).center(18)} | {self.excitation_pool_type[i].center(27)}"
+                    f"------GP {str(i).center(3)} {str(grad[i]).center(27)} | {str(self.excitation_pool[i]).center(18)} | {self.excitation_pool_type[i].center(27)}"
                 )
 
             print()
             print(np.argmax(np.abs(grad)))
             max_arg = np.argmax(np.abs(grad))
+            
+            print()
+            print("### Index of Max grad :: ", end=" ")
+            print(np.argmax(np.abs(grad)))
+            print("### Number of excitation gradient > %e :: "%(epoch), end=" ")
+            print( (np.abs(grad) > epoch).sum())
+            max_arg = np.argmax(np.abs(grad))
+            max_short = np.flip(np.argsort(np.abs(grad)))
+            print(max_short)
+            print(skip_optimisation_counter)
+            bc= "BC"
+            print("SPIN_SS", end=" ")
+            diagonal_spin = self.sa_spin_penalty().diagonal()
+            for i in diagonal_spin:
+                print(i, end=" ")
+            print()
             if(np.max(np.abs(grad)) < epoch):
                 nloop = i
                 break
-            self.ups_layout.excitation_indices.append(self.excitation_pool[max_arg])
-            #self.ups_layout.excitation_indices.append(np.array(excitation_pool[max_arg])-self.num_inactive_spin_orbs)
-            self.ups_layout.excitation_operator_type.append(self.excitation_pool_type[max_arg])
+            self.ups_layout.excitation_indices.append(np.array(self.excitation_pool[max_short[skip_optimisation_counter]])- self.num_inactive_spin_orbs)
+            self.ups_layout.excitation_operator_type.append(self.excitation_pool_type[max_short[skip_optimisation_counter]])
             #del self.excitation_pool[max_arg]
             #del self.excitation_pool_type[max_arg]
             self.ups_layout.n_params += 1
-            self.excitation_pool = self.excitation_pool
-            self.excitation_pool_type = self.excitation_pool_type
+            #self.excitation_pool = self.excitation_pool
+            #self.excitation_pool_type = self.excitation_pool_type
             
-            self.thetas = [ 0.0 for i in range(self.ups_layout.n_params)]
+            #self.thetas = [ 0.0 for i in range(self.ups_layout.n_params)]
+            self._thetas.append(0.0)
             print()
             print("Printing UPS layout")
             print("#############")
-            print(self.ups_layout.excitation_indices)
+            #print(self.ups_layout.excitation_indices)
+            #print()
+            #self.run_wf_optimization_2step("CG",  orbital_optimization=orbital_opt, tol=1e-10)
+            #self.run_wf_optimization_2step("bfgs",  orbital_optimization=orbital_opt, tol=1e-10)
+            #self.run_wf_optimization_2step("cobyla",  orbital_optimization=orbital_opt, tol=1e-10)
+            print("H@I ", end=" ")
+            print(skip_optimisation)
+            print(skip_optimisation_counter)
+            if(skip_optimisation_counter == skip_optimisation):
+                print("HI")
+                self.run_wf_optimization_2step(optimiser_algo,  orbital_optimization=orbital_opt, tol=1e-10)
+                skip_optimisation_counter = 0
+                
+            else:
+                skip_optimisation_counter += 1
+            #self.run_wf_optimization_2step("l-bfgs-b",  orbital_optimization=orbital_opt, tol=1e-10)
             print()
-            self.run_wf_optimization_1step("bfgs", False)
-            print()
-            print("Printing the Optimised Theta")
-            print("############################")
+            print("------TP Printing the Optimised Theta")
+            print("------TP ############################")
             
             print(
-                    f"--------{str("Thetas").center(27)} | {str("UPS Layout indices").center(18)} | {str("UPS Layout type").center(27)}"
+                    f"------TP {str("Thetas").center(27)} | {str("UPS Layout indices").center(18)} | {str("Excitation indices").center(18)} | {str("UPS Layout type").center(27)}"
                 )
+            
             for i in range(len(self._thetas)):
                 
                 print(
-                    f"--------{str(self._thetas[i]).center(27)} | {str(self.ups_layout.excitation_indices[i]).center(18)} | {self.ups_layout.excitation_operator_type[i].center(27)}"
+                    f"------TP {str(self._thetas[i]).center(27)} | {str(self.ups_layout.excitation_indices[i]).center(18)} |{str(self.ups_layout.excitation_indices[i] + self.num_inactive_spin_orbs ).center(18)} | {self.ups_layout.excitation_operator_type[i].center(27)}"
                 )
-        print("------GP  Number of Loop", end = " ")
+                
+            print("### Number of excitation gradient > %e :: "%(epoch), end=" ")
+            print( (np.abs(grad) > epoch).sum())
+            
+            Hamiltonian = hamiltonian_0i_0a(
+                self.h_mo,
+                self.g_mo,
+                self.num_inactive_orbs,
+                self.num_active_orbs,
+            )
+            EC = expectation_vector_SA(
+                self.ci_coeffs,
+                [Hamiltonian],
+                self.ci_coeffs,
+                self.ci_info,
+                self.thetas,
+                self.ups_layout,
+            )
+            print("SS energy = ",bc,end=" ")
+            for i in EC.diagonal():
+                print(i,end=" ")
+            print()
+            print(np.linalg.eigh(EC))
+        print("------TP  Number of Loop", end = " ")
         print(nloop)
         
+    
         
     
 
 
     def calculate_derivative_of_operator_pool(self):
+        Spin_tmp = spin_0i_0a(
+                self.h_mo,
+                self.g_mo,
+                self.num_inactive_orbs,
+                self.num_active_orbs,
+                diagonal=False
+            )
+        Spin = Spin_tmp*Spin_tmp + self.target_spin**2*FermionicOperator({}) - 2*self.target_spin*Spin_tmp
+        
         Hamiltonian = hamiltonian_0i_0a(
             self.h_mo,
             self.g_mo,
             self.num_inactive_orbs,
             self.num_active_orbs,
-        )
+        ) + self.facSpin*Spin
         
         grad = []
         
@@ -360,9 +481,16 @@ class WaveFunctionSAADAPT:
             elif self.excitation_pool_type[i] == "double":
                 (i, j, a, b) = np.array(self.excitation_pool[i]) 
                 T = G2(i, j, a, b, True)
-            gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+                
+            if(self.state_specific):
+                gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+                gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+            else:
+                gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
                                    self.ci_info, self.thetas,self.ups_layout)
-            gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+                gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
                                    self.ci_info, self.thetas,self.ups_layout)
             grad.append(gr)
             
@@ -453,6 +581,16 @@ class WaveFunctionSAADAPT:
         # Apply orbital rotation unitary to MO coefficients
         return np.matmul(self._c_mo, scipy.linalg.expm(-kappa_mat))
 
+    # this has to be done differently
+    @c_mo.setter
+    def c_mo(self, mo:np.ndarray ):
+        self._h_mo = None
+        self._g_mo = None
+        self._c_mo = mo.copy()
+        self._sa_energy = None
+        self._state_energies = None
+        self._state_ci_coeffs = None
+
     @property
     def h_mo(self) -> np.ndarray:
         """Get one-electron Hamiltonian integrals in MO basis.
@@ -463,6 +601,7 @@ class WaveFunctionSAADAPT:
         if self._h_mo is None:
             self._h_mo = one_electron_integral_transform(self.c_mo, self._h_ao)
         return self._h_mo
+    
 
     @property
     def g_mo(self) -> np.ndarray:
@@ -475,8 +614,52 @@ class WaveFunctionSAADAPT:
             self._g_mo = two_electron_integral_transform(self.c_mo, self._g_ao)
         return self._g_mo
 
+
     @property
     def rdm1(self) -> np.ndarray:
+        """Calculate one-electron reduced density matrix in the active space.
+
+        Returns:
+            One-electron reduced density matrix.
+        """
+
+        if self._rdm1 is None:
+            self._rdm1 = np.zeros((self.num_active_orbs, self.num_active_orbs))
+            for p in range(self.num_inactive_orbs, self.num_inactive_orbs + self.num_active_orbs):
+                p_idx = p - self.num_inactive_orbs
+                for q in range(self.num_inactive_orbs, p + 1):
+                    q_idx = q - self.num_inactive_orbs
+                    val = 0.0
+                    Epq_op = Epq(
+                        p_idx,
+                        q_idx,
+                    )
+                    if(self.state_specific):
+                        val = expectation_vector_SA(
+                            self.ci_coeffs,
+                            [Epq_op],
+                            self.ci_coeffs,
+                            self.ci_info,
+                            self.thetas,
+                            self.ups_layout,
+                            do_folding=False,
+                        )[self.specific_state,self.specific_state]
+                    else:
+                        val = expectation_value_SA(
+                            self.ci_coeffs,
+                            [Epq_op],
+                            self.ci_coeffs,
+                            self.ci_info,
+                            self.thetas,
+                            self.ups_layout,
+                            do_folding=False,
+                        )
+                    self._rdm1[p_idx, q_idx] = val  # type: ignore
+                    self._rdm1[q_idx, p_idx] = val  # type: ignore
+        return self._rdm1
+
+
+    def rdm1_(self) -> np.ndarray:
         """Calculate one-electron reduced density matrix in the active space.
 
         Returns:
@@ -493,19 +676,33 @@ class WaveFunctionSAADAPT:
                         p_idx,
                         q_idx,
                     )
-                    val = expectation_value_SA(
-                        self.ci_coeffs,
-                        [Epq_op],
-                        self.ci_coeffs,
-                        self.ci_info,
-                        self.thetas,
-                        self.ups_layout,
-                        do_folding=False,
-                    )
+                    
+                  
+                    if(self.state_specific):
+                        val = expectation_vector_SA(
+                            self.ci_coeffs,
+                            [Epq_op],
+                            self.ci_coeffs,
+                            self.ci_info,
+                            self.thetas,
+                            self.ups_layout,
+                            do_folding=False,
+                        )[self.specific_state,self.specific_state]
+                    else:
+                        val = expectation_value_SA(
+                            self.ci_coeffs,
+                            [Epq_op],
+                            self.ci_coeffs,
+                            self.ci_info,
+                            self.thetas,
+                            self.ups_layout,
+                            do_folding=False,
+                        )
                     self._rdm1[p_idx, q_idx] = val  # type: ignore
                     self._rdm1[q_idx, p_idx] = val  # type: ignore
         return self._rdm1
-
+    
+    
     @property
     def rdm2(self) -> np.ndarray:
         """Calculate two-electron reduced density matrix in the active space.
@@ -522,6 +719,7 @@ class WaveFunctionSAADAPT:
                     self.num_active_orbs,
                 )
             )
+
             for p in range(self.num_inactive_orbs, self.num_inactive_orbs + self.num_active_orbs):
                 p_idx = p - self.num_inactive_orbs
                 for q in range(self.num_inactive_orbs, p + 1):
@@ -546,15 +744,26 @@ class WaveFunctionSAADAPT:
                                 r_idx,
                                 s_idx,
                             )
-                            val = expectation_value_SA(
-                                self.ci_coeffs,
-                                [Epq_op, Ers_op],
-                                self.ci_coeffs,
-                                self.ci_info,
-                                self.thetas,
-                                self.ups_layout,
-                                do_folding=False,
-                            )
+                            if(self.state_specific):
+                                val = expectation_vector_SA(
+                                    self.ci_coeffs,
+                                    [Epq_op, Ers_op],
+                                    self.ci_coeffs,
+                                    self.ci_info,
+                                    self.thetas,
+                                    self.ups_layout,
+                                    do_folding=False,
+                                    )[self.specific_state,self.specific_state]
+                            else:
+                                val = expectation_value_SA(
+                                    self.ci_coeffs,
+                                    [Epq_op, Ers_op],
+                                    self.ci_coeffs,
+                                    self.ci_info,
+                                    self.thetas,
+                                    self.ups_layout,
+                                    do_folding=False,
+                                )
                             if q == r:
                                 val -= self.rdm1[p_idx, s_idx]
                             self._rdm2[p_idx, q_idx, r_idx, s_idx] = val  # type: ignore
@@ -591,15 +800,33 @@ class WaveFunctionSAADAPT:
                 self.num_inactive_orbs,
                 self.num_active_orbs,
             )
-            self._sa_energy = expectation_value_SA(
+            self._sa_energy = expectation_vector_SA(
                 self.ci_coeffs,
                 [Hamiltonian],
                 self.ci_coeffs,
                 self.ci_info,
                 self.thetas,
                 self.ups_layout,
-            )
+            )[self.specific_state, self.specific_state]
         return self._sa_energy
+    
+    
+    def sa_spin_penalty(self) -> np.ndarray:
+        Spin = spin_0i_0a(
+                self.h_mo,
+                self.g_mo,
+                self.num_inactive_orbs,
+                self.num_active_orbs,
+            )
+        spin_ = expectation_vector_SA(
+                self.ci_coeffs,
+                [Spin],
+                self.ci_coeffs,
+                self.ci_info,
+                self.thetas,
+                self.ups_layout,
+            )
+        return spin_
 
     def run_wf_optimization_2step(
         self,
@@ -685,7 +912,7 @@ class WaveFunctionSAADAPT:
 
                 optimizer = Optimizers(
                     energy_oo,
-                    "l-bfgs-b",
+                    optimizer_name,
                     grad=gradient_oo,
                     maxiter=maxiter,
                     tol=tol,
@@ -709,8 +936,8 @@ class WaveFunctionSAADAPT:
             e_new = res.fun
             time_str = f"{time.time() - full_start:7.2f}"
             e_str = f"{e_new:3.12f}"
-            print(f"{str(full_iter + 1).center(11)} | {time_str.center(18)} | {e_str.center(27)}")
-            if abs(e_new - e_old) < tol:
+            print(f"{str(full_iter + 1).center(11)} | {time_str.center(18)} | {e_str.center(27)} | {self.sa_spin_penalty()}")
+            if abs(e_new - e_old) < tol*1000:
                 break
             e_old = e_new
         # Subspace diagonalization
@@ -721,7 +948,7 @@ class WaveFunctionSAADAPT:
         self,
         optimizer_name: str,
         orbital_optimization: bool = False,
-        tol: float = 1e-10,
+        tol: float = 1e-11,
         maxiter: int = 1000,
     ) -> None:
         """Run one step optimization of wave function.
@@ -811,6 +1038,9 @@ class WaveFunctionSAADAPT:
                 self._kappa_old[i] = 0.0
         else:
             self.thetas = res.x.tolist()
+        
+        print("Spin Penalty:: ",end=" ")    
+        print(self.sa_spin_penalty())
         # Subspace diagonalization
         # remove the normal diagonalistion of subspace we will just optimise theta
         self._do_state_ci()
@@ -842,14 +1072,6 @@ class WaveFunctionSAADAPT:
                     self.ups_layout,
                     do_folding=False,
                 )
-        # Diagonalize
-        print()
-        print("Printing digonal element")
-        print("########################")
-        for i in range(len(self.ci_coeffs)):
-            print(state_H[i,i], end=" ")
-        print()
-        print()
         eigval, eigvec = scipy.linalg.eig(state_H)
         sorting = np.argsort(eigval)
         self._state_energies = np.real(eigval[sorting])
@@ -864,7 +1086,7 @@ class WaveFunctionSAADAPT:
         """
         if self._state_energies is None:
             self._do_state_ci()
-        return self._state_energies
+        return self._state_energies , self._state_ci_coeffs
 
     @property
     def excitation_energies(self) -> np.ndarray:
@@ -964,6 +1186,7 @@ class WaveFunctionSAADAPT:
         Returns:
             State-averaged electronic energy.
         """
+        #print("Somthint")
         if np.max(np.abs(np.array(self._old_opt_parameters) - np.array(parameters))) < 10**-14:
             return self._E_opt_old
         num_kappa = 0
@@ -974,9 +1197,17 @@ class WaveFunctionSAADAPT:
             self.thetas = parameters[num_kappa:]
             # here the coeffcient is set to none 
             # assigning it to inital csf
-        Hamiltonian = hamiltonian_0i_0a(
+        Spin_tmp = spin_0i_0a(
+                self.h_mo,
+                self.g_mo,
+                self.num_inactive_orbs,
+                self.num_active_orbs,
+                diagonal=False
+            )
+        Spin = Spin_tmp*Spin_tmp + self.target_spin**2*FermionicOperator({}) - 2*self.target_spin*Spin_tmp
+        Hamiltonian = (hamiltonian_0i_0a(
             self.h_mo, self.g_mo, self.num_inactive_orbs, self.num_active_orbs
-        ).get_folded_operator(self.num_inactive_orbs, self.num_active_orbs, self.num_virtual_orbs)
+        ) + self.facSpin*Spin).get_folded_operator(self.num_inactive_orbs, self.num_active_orbs, self.num_virtual_orbs)
         if return_all_states:
             energies = []
             # Energy for each state in SA
@@ -995,28 +1226,35 @@ class WaveFunctionSAADAPT:
             self._E_opt_old = np.copy(np.array(energies))
             self._old_opt_parameters = np.copy(parameters)
             return np.array(energies)
-        E = expectation_value_SA(
-            self.ci_coeffs,
-            [Hamiltonian],
-            self.ci_coeffs,
-            self.ci_info,
-            self.thetas,
-            self.ups_layout,
-            do_folding=False,
-        )
-
-        Ec = expectation_value(
-            self.ci_coeffs[0],
-            [Hamiltonian],
-            self.ci_coeffs[0],
-            self.ci_info,
-            self.thetas,
-            self.ups_layout,
-            do_folding=False,
-        )
+        E=0
+        if(self.state_specific):
+            E = expectation_vector_SA(
+                self.ci_coeffs,
+                [Hamiltonian],
+                self.ci_coeffs,
+                self.ci_info,
+                self.thetas,
+                self.ups_layout,
+                do_folding=False,
+            )
+            CB = np.argmin(E.diagonal())
+            self.specific_state = CB
+            E = E.diagonal().min()
+            
+        else:
+            E = expectation_value_SA(
+                self.ci_coeffs,
+                [Hamiltonian],
+                self.ci_coeffs,
+                self.ci_info,
+                self.thetas,
+                self.ups_layout,
+                do_folding=False,
+            )
         self._E_opt_old = E
         self._old_opt_parameters = np.copy(parameters)
-        return E  
+        
+        return E 
 
 
     def _calc_gradient_optimization(
@@ -1046,23 +1284,26 @@ class WaveFunctionSAADAPT:
         if theta_optimization:
             self.thetas = parameters[num_kappa:]
         if kappa_optimization:
-            rdms = ReducedDenstiyMatrix(
-                self.num_inactive_orbs,
-                self.num_active_orbs,
-                self.num_virtual_orbs,
-                rdm1=self.rdm1,
-                rdm2=self.rdm2,
-            )
             gradient[:num_kappa] = get_orbital_gradient(
-                rdms, self.h_mo, self.g_mo, self.kappa_idx, self.num_inactive_orbs, self.num_active_orbs
+                self.h_mo, self.g_mo, self.kappa_idx, self.num_inactive_orbs, self.num_active_orbs,self.rdm1, self.rdm2
             )
         if theta_optimization:
+            
+            Spin_tmp = spin_0i_0a(
+                self.h_mo,
+                self.g_mo,
+                self.num_inactive_orbs,
+                self.num_active_orbs,
+                diagonal=False
+            )
+            Spin = Spin_tmp*Spin_tmp + self.target_spin**2*FermionicOperator({}) - 2*self.target_spin*Spin_tmp
+            
             Hamiltonian = hamiltonian_0i_0a(
                 self.h_mo,
                 self.g_mo,
                 self.num_inactive_orbs,
                 self.num_active_orbs,
-            )
+            ) + self.facSpin*Spin
             # Reference bra state (no differentiations)
             bra_vec = propagate_state_SA(
                 [Hamiltonian],
@@ -1090,8 +1331,13 @@ class WaveFunctionSAADAPT:
                     self.ci_info,
                     self.ups_layout,
                 )
-                for bra, ket in zip(bra_vec, ket_vec_tmp):
-                    gradient[i + num_kappa] += 2 * np.matmul(bra, ket) / len(bra_vec)
+                if(self.state_specific):
+                    bra = bra_vec[self.specific_state]
+                    ket = ket_vec_tmp[self.specific_state]
+                    gradient[i + num_kappa] += 2 * np.matmul(bra, ket) 
+                else:
+                    for bra, ket in zip(bra_vec, ket_vec_tmp):
+                        gradient[i + num_kappa] += 2 * np.matmul(bra, ket) / len(bra_vec)
                 # Product rule implications on reference bra and CSF ket
                 # See 10.48550/arXiv.2303.10825, Eq. 20 (appendix - v1)
                 bra_vec = propagate_unitary_SA(
@@ -1101,8 +1347,6 @@ class WaveFunctionSAADAPT:
                     self.thetas,
                     self.ups_layout,
                 )
-                x = [i for i in range(36)]
-                self.nm += 1
                 ket_vec = propagate_unitary_SA(
                     ket_vec,
                     i,
