@@ -46,15 +46,7 @@ g_eri = SQobj.integral.electron_repulsion_tensor
 WF = WaveFunctionUPS(
 =======
 h_core = SQobj.integral.kinetic_energy_matrix + SQobj.integral.nuclear_attraction_matrix
-g_eri = SQobj.integral.electron_repulsion_tensor
-WF = WaveFunctionSAADAPT(
->>>>>>> 60937ff (adapt)
-    SQobj.molecule.number_electrons,
-    (4, 4),
-    SQobj.hartree_fock.mo_coeff,
-    h_core,
-    g_eri,
-<<<<<<< HEAD
+g_eri = SQ
     "tUPS",
     ansatz_options={"n_layers": 2, "skip_last_singles": True},
     include_active_kappa=True,
