@@ -1,148 +1,187 @@
-<<<<<<< HEAD
-=======
 # type: ignore
->>>>>>> 60937ff (adapt)
-import numpy as np
+import os
+os.environ["OMP_NUM_THREADS"] = "2" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "2" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "2" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "2" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "2" # export NUMEXPR_NUM_THREADS=6
+import sys
+
 
 import slowquant.SlowQuant as sq
-import slowquant.unitary_coupled_cluster.linear_response.allstatetransfer as allstlr
-import slowquant.unitary_coupled_cluster.linear_response.naive as naivelr
-<<<<<<< HEAD
-from slowquant.unitary_coupled_cluster.sa_ups_wavefunction import WaveFunctionSAUPS
-from slowquant.unitary_coupled_cluster.ucc_wavefunction import WaveFunctionUCC
-from slowquant.unitary_coupled_cluster.ups_wavefunction import WaveFunctionUPS
-
-
-"""Test LiH UCCSD(2,2) LR."""
-SQobj = sq.SlowQuant()
-SQobj.set_molecule(
-    """C  4.673795    6.280948  0.00 ;
-C  5.901190    5.572311  0.00 ;
-C  5.901190    4.155037  0.00 ;
-C  4.673795    3.446400  0.00 ;
-C  3.446400    4.155037  0.00 ;
-C  3.446400    5.572311  0.00 ;
-H  4.673795    7.376888  0.00 ;
-H  6.850301    6.120281  0.00 ;
-H  6.850301    3.607068  0.00 ;
-H  4.673795    2.350461  0.00 ;
-H  2.497289    3.607068  0.00 ;
-H  2.497289    6.120281  0.00 ;
-""",
-=======
 from slowquant.unitary_coupled_cluster.sa_adapt_wavefunction import WaveFunctionSAADAPT
+
+#from slowquant.unitary_coupled_cluster.ups_wavefunction import WaveFunctionUPS
 #from slowquant.unitary_coupled_cluster.sa_ups_wavefunction import WaveFunctionSAUPS
-from slowquant.unitary_coupled_cluster.ucc_wavefunction import WaveFunctionUCC
-from slowquant.unitary_coupled_cluster.ups_wavefunction import WaveFunctionUPS
 
 """This should give exactly the same as FCI.
 
 Since all states, are includes in the subspace expansion.
 """
-SQobj = sq.SlowQuant()
-SQobj.set_molecule(
-    """H   0.0  0.0  0.0;
-       Li   0.0  0.0  0.735;""",
->>>>>>> 60937ff (adapt)
-    distance_unit="angstrom",
+from pyscf import gto, scf ,mcscf
+import numpy as np
+atm= """
+C        0.0001201395   -0.0000565799   -0.0000000000;
+O        1.2796857221    0.0000273114    0.0000000000;
+O       -0.6398921477    1.1081454352   -0.0000000000;
+O       -0.6399137140   -1.1081161667    0.0000000000;
+"""
+
+
+mol = gto.M(
+    atom=atm,
+    charge= -2,
+    #charge= 0,
+    spin = 0,
+    verbose=4,
+    unit="Angstrom",
+    basis= "def2-svp"
 )
-SQobj.set_basis_set("STO-3G")
-SQobj.init_hartree_fock()
-SQobj.hartree_fock.run_restricted_hartree_fock()
-<<<<<<< HEAD
-h_core = SQobj.integral.kinetic_energy_matrix + \
-    SQobj.integral.nuclear_attraction_matrix
-g_eri = SQobj.integral.electron_repulsion_tensor
-WF = WaveFunctionUPS(
-=======
-h_core = SQobj.integral.kinetic_energy_matrix + SQobj.integral.nuclear_attraction_matrix
-g_eri = SQobj.integral.electron_repulsion_tensor
+
+mf = scf.RHF(mol)
+mf.max_cycle = 300
+mf.kernel()
+
+print(mol.nelec)
+print(mf.e_tot - mf.energy_nuc())
+
 WF = WaveFunctionSAADAPT(
->>>>>>> 60937ff (adapt)
-    SQobj.molecule.number_electrons,
+#WF = WaveFunctionUPS(
+    mol.nelec[0] + mol.nelec[1],
     (4, 4),
-    SQobj.hartree_fock.mo_coeff,
-    h_core,
-    g_eri,
-<<<<<<< HEAD
-    "tUPS",
-    ansatz_options={"n_layers": 2, "skip_last_singles": True},
-    include_active_kappa=True,
-)
-help(WF)
-dipole_integrals = (
-    SQobj.integral.get_multipole_matrix([1, 0, 0]),
-    SQobj.integral.get_multipole_matrix([0, 1, 0]),
-    SQobj.integral.get_multipole_matrix([0, 0, 1]),
-)
-WF.run_wf_optimization_1step("SLSQP", True)
-
-print(WF.g_mo.shape)
-print(WF.h_mo.shape)
-print("+++++++++++++++++")
-print(WF.ansatz_options)
-print(WF.ups_layout)
-print(WF.ups_layout.excitation_indices)
-print(WF.ups_layout.excitation_operator_type)
-LR = naivelr.LinearResponseUCC(WF, excitations="S")
-LR.calc_excitation_energies()
-print(LR.excitation_energies[0])
-print(LR.excitation_energies[1])
-print(LR.excitation_energies[2])
-print(LR.excitation_energies[3])
-print(LR.excitation_energies[4])
-print(LR.excitation_energies[5])
-print(LR.excitation_energies[6])
-print(LR.excitation_energies[7])
-print(LR.excitation_energies[8])
-
-=======
+    mf.mo_coeff,
+    mol.intor("int1e_kin") + mol.intor("int1e_nuc"),
+    mol.intor("int2e"),
     (
-        [
-            #[1],
-            #[1],
-            [1],
-            [1],
-        ],
-        [
-            #["00001111"],
-            #["00100111"],
-            ["00011011"],
-            ["11110000"],
-            #["1100"],
-        ],
+            [
+            
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                [1.0],
+                
+            ],
+            [
+                ["00001111"],
+                ["00011011"],
+                ["00011110"],
+                ["01001011"],
+                ["01001110"],
+                ["01011010"],
+                ["00100111"],
+                ["00110011"],
+                ["00110110"],
+                ["01100011"],
+                ["01100110"],
+                ["01110010"],
+                ["00101101"],
+                ["00111001"],
+                ["00111100"],
+                ["01101001"],
+                ["01101100"],
+                ["01111000"],
+                ["10000111"],
+                ["10010011"],
+                ["10010110"],
+                ["11000011"],
+                ["11000110"],
+                ["11010010"],
+                ["10001101"],
+                ["10011001"],
+                ["10011100"],
+                ["11001001"],
+                ["11001100"],
+                ["11011000"],
+                ["10100101"],
+                ["10110001"],
+                ["10110100"],
+                ["11100001"],
+                ["11100100"],
+                ["11110000"],
+            ],
     ),
-    #(
-    #    [
-    #        [1],
-    #        [2 ** (-1 / 2), -(2 ** (-1 / 2))],
-    #        [1],
-    #    ],
-    #    [
-    #        ["1100"],
-    #        ["1001", "0110"],
-    #        ["0011"],
-    #    ],
-    #),
-    "tUPS",
-    ansatz_options={"n_layers": 1, "skip_last_singles": True},
-    include_active_kappa=True,
+    "ADAPT",
+    target_spin =  0,
+    unpaired_electron = 0,
+    spinfactor=0.01,
+    state_specific=True
 )
+ikl = [
+                ["00001111"],
+                ["00011011"],
+                ["00011110"],
+                ["01001011"],
+                ["01001110"],
+                ["01011010"],
+                ["00100111"],
+                ["00110011"],
+                ["00110110"],
+                ["01100011"],
+                ["01100110"],
+                ["01110010"],
+                ["00101101"],
+                ["00111001"],
+                ["00111100"],
+                ["01101001"],
+                ["01101100"],
+                ["01111000"],
+                ["10000111"],
+                ["10010011"],
+                ["10010110"],
+                ["11000011"],
+                ["11000110"],
+                ["11010010"],
+                ["10001101"],
+                ["10011001"],
+                ["10011100"],
+                ["11001001"],
+                ["11001100"],
+                ["11011000"],
+                ["10100101"],
+                ["10110001"],
+                ["10110100"],
+                ["11100001"],
+                ["11100100"],
+                ["11110000"],
+            ]
+print(len(ikl))
 
 
-#WF.try_toCalculate_gradient()
-#WF.gradient(WF.thetas, True, False)
 
-#WF.run_wf_optimization_1step("bfgs", True)
-#WF.do_adapt()
+WF.do_adapt(orbital_opt=False, epoch=1e-5, optimiser_algo="l-bfgs-b")
+print(WF.ci_coeffs)
 
-WF.do_adapt()
-#print(WF.ups_layout.excitation_indices)
-#print(WF.ups_layout.excitation_operator_type)
 
-print("Final energy after eigh digonalisation")
 print(WF.energy_states)
-#print(WF.excitation_energies[0])
-#print(WF.excitation_energies[1])
-#print(WF.excitation_energies[2])
->>>>>>> 60937ff (adapt)
