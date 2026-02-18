@@ -378,6 +378,9 @@ class WaveFunctionSAADAPT:
             for i in diagonal_spin:
                 print(i, end=" ")
             print()
+            print("Diagonal element of the spin matrix")
+            print()
+            print()
             if(np.max(np.abs(grad)) < epoch):
                 nloop = i
                 break
@@ -441,11 +444,15 @@ class WaveFunctionSAADAPT:
                 self.thetas,
                 self.ups_layout,
             )
-            print("SS energy = ",bc,end=" ")
+            print()
+            print("SS energies : Digonal Elements of the matrix = ")
             for i in EC.diagonal():
                 print(i,end=" ")
             print()
-            print(np.linalg.eigh(EC))
+            print("Find the minimum energy you like")
+            print()
+            print()
+            #print(np.linalg.eigh(EC))
         print("------TP  Number of Loop", end = " ")
         print(nloop)
         
