@@ -220,13 +220,20 @@ def two_electron_integral_tranformation_for_CI(C: np.ndarray, ERI: np.ndarray, n
     # one doesnot need to transform all the 4 fold two electron integral for core to core
     # there are only some core to active transformantion to be done
     eris =  {}
-    eris["aaap"] = np.einsum("ia,jb,ijkl,kc,ld->abcd", mo_active, mo_active, ERI, mo_active, mc.mo_coeff)
-    eris["ppaa"] = np.einsum("ia,jb,ijkl,kc,ld->abcd", mc.mo_coeff, mc.mo_coeff, ERI, mo_active,mo_active)
-    eris["papa"] = np.einsum("ia,jb,ijkl,kc,ld->abcd", mc.mo_coeff, mo_active, ERI, mc.mo_coeff, mo_active)
-    eris["jc_pp"] = np.einsum("ia,ja,ijkl,kc,ld->acd", mo_core, mo_core, ERI, mc.mo_coeff, mc.mo_coeff)
-    eris["kc_pp"] = np.einsum("ia,jb,ijkl,kc,la->abc", mo_core,  mc.mo_coeff, ERI, mc.mo_coeff, mo_core)
-    eris["vhf_c"] = numpy.einsum('cij->ij', jc_pp)*2 - numpy.einsum('cij->ij', kc_pp)
-    eris["j_pc"] = numpy.einsum('ijj->ji', jc_pp)
-    eris["k_pc"] = numpy.einsum('ijj->ji', kc_pp)
-    
+    eris["aaap"] = np.einsum("ia,jb,kc,ld,ijkl->abcd", mo_active, mo_active, mo_active, mc.mo_coeff,ERI, optimize=["einsum_path", (0, 4), (0, 3), (0, 2), (0, 1)])
+    print(1)
+    eris["ppaa"] = np.einsum("ia,jb,kc,ld,ijkl->abcd", mc.mo_coeff, mc.mo_coeff, mo_active,mo_active,ERI, optimize=["einsum_path", (3, 4), (2, 3), (1, 2), (0, 1)])
+    print(2)
+    eris["papa"] = np.einsum("ia,jb,kc,ld,ijkl->abcd", mc.mo_coeff, mo_active, mc.mo_coeff, mo_active,ERI, optimize=["einsum_path", (3, 4), (2, 3), (1, 2), (0, 1)])
+    print(3)
+    eris["jc_pp"] = np.einsum("ia,ja,kc,ld,ijkl->acd", mo_core, mo_core, mc.mo_coeff, mc.mo_coeff,ERI, optimize=["einsum_path", (0, 4), (0, 3), (0, 2), (0, 1)])
+    print(4)
+    eris["kc_pp"] = np.einsum("ia,jb,kc,la,ijkl->abc", mo_core,  mc.mo_coeff, mc.mo_coeff, mo_core,ERI, optimize=["einsum_path", (0, 4), (2, 3), (0, 2), (0, 1)])
+    print(5)
+    eris["vhf_c"] = numpy.einsum('cij->ij', eris["jc_pp"])*2 - numpy.einsum('cij->ij', eris["kc_pp"])
+    print(6)
+    eris["j_pc"] = numpy.einsum('ijj->ji', eris["jc_pp"])
+    print(7)
+    eris["k_pc"] = numpy.einsum('ijj->ji', eris["kc_pp"])
+    print(8)
     return eris
