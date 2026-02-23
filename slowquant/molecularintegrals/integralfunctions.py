@@ -209,3 +209,24 @@ def two_electron_integral_transform(C: np.ndarray, int2e: np.ndarray) -> np.ndar
     return np.einsum(
         "ai,bj,ck,dl,abcd->ijkl", C, C, C, C, int2e, optimize=["einsum_path", (0, 4), (0, 3), (0, 2), (0, 1)]
     )
+
+
+def two_electron_integral_tranformation_for_CI(C: np.ndarray, ERI: np.ndarray, nao, ncore, nactive) -> np.ndarray:
+    # when the molecule is big there are lots of core orbitals
+    # there are many kind of interaction
+    # core to core 
+    # core to active
+    # active to active
+    # one doesnot need to transform all the 4 fold two electron integral for core to core
+    # there are only some core to active transformantion to be done
+    eris =  {}
+    eris["aaap"] = np.einsum("ia,jb,ijkl,kc,ld->abcd", mo_active, mo_active, ERI, mo_active, mc.mo_coeff)
+    eris["ppaa"] = np.einsum("ia,jb,ijkl,kc,ld->abcd", mc.mo_coeff, mc.mo_coeff, ERI, mo_active,mo_active)
+    eris["papa"] = np.einsum("ia,jb,ijkl,kc,ld->abcd", mc.mo_coeff, mo_active, ERI, mc.mo_coeff, mo_active)
+    eris["jc_pp"] = np.einsum("ia,ja,ijkl,kc,ld->acd", mo_core, mo_core, ERI, mc.mo_coeff, mc.mo_coeff)
+    eris["kc_pp"] = np.einsum("ia,jb,ijkl,kc,la->abc", mo_core,  mc.mo_coeff, ERI, mc.mo_coeff, mo_core)
+    eris["vhf_c"] = numpy.einsum('cij->ij', jc_pp)*2 - numpy.einsum('cij->ij', kc_pp)
+    eris["j_pc"] = numpy.einsum('ijj->ji', jc_pp)
+    eris["k_pc"] = numpy.einsum('ijj->ji', kc_pp)
+    
+    return eris
