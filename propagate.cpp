@@ -7,16 +7,13 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#define PYBIND11_BUILD
 #ifdef PYBIND11_BUILD
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 namespace py = pybind11;
 #endif
-
 #include <math.h>
-
 #include <stdint.h>
 #include <stdlib.h>
 
