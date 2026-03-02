@@ -19,6 +19,7 @@ from slowquant.unitary_coupled_cluster.operators import (
 )
 from slowquant.unitary_coupled_cluster.util import UccStructure, UpsStructure
 import random
+import fermionic_ops as fops
 
 
 @nb.jit(nopython=True)
@@ -399,6 +400,10 @@ def propagate_state(
             else:
                 op_folded = op
             # loop over all strings of annihilation operators in FermionicOperator sum
+
+
+            print(op_folded.operators)
+
             for fermi_label in op_folded.operators.keys():
                 # Separate each annihilation operator string in creation and annihilation indices
                 anni_idx = []
@@ -425,6 +430,32 @@ def propagate_state(
             new_state = np.copy(tmp_state)
     return new_state
 
+def opLoop(op_folded_operators,num_active_orbs,parity_check,idx2det,det2idx,do_unsafe,tmp_state):
+    new_state = np.zeros_like(tmp_state)
+    for fermi_label in op_folded_operators.keys():
+        # Separate each annihilation operator string in creation and annihilation indices
+        anni_idx = []
+        create_idx = []
+        for fermi_op in fermi_label:
+            if fermi_op[1]:
+                create_idx.append(fermi_op[0])
+            else:
+                anni_idx.append(fermi_op[0])
+        anni_idx = np.array(anni_idx, dtype=np.int64)
+        create_idx = np.array(create_idx, dtype=np.int64)
+        tmp_state = apply_operator_SA(
+            new_state,
+            anni_idx,
+            create_idx,
+            num_active_orbs,
+            parity_check,
+            idx2det,
+            det2idx,
+            do_unsafe,
+            tmp_state,
+            op_folded_operators[fermi_label],
+        )
+    return np.copy(tmp_state)
 
 def propagate_state_SA(
     operators: list[FermionicOperator | str],
@@ -473,6 +504,7 @@ def propagate_state_SA(
     for i in range(2 * num_active_orbs - 1, -1, -1):
         num += 2**i
         parity_check[2 * num_active_orbs - i] = num
+    
     for op in operators[::-1]:
         # Ansatz unitary in operators
         if isinstance(op, str):
@@ -500,6 +532,18 @@ def propagate_state_SA(
             else:
                 op_folded = op
             # loop over all strings of annihilation operators in FermionicOperator sum
+            #new_state = opLoop(op_folded.operators,num_active_orbs,parity_check,idx2det,det2idx,do_unsafe,tmp_state)
+            #print(det2idx)
+            #print(do_unsafe)
+            #print(idx2det)
+            print()
+            state = fops.op_loop(op_folded.operators
+            ,num_active_orbs,parity_check,idx2det,
+            dict(det2idx)
+            ,do_unsafe
+            ,new_state)
+            #exit()
+            
             for fermi_label in op_folded.operators.keys():
                 # Separate each annihilation operator string in creation and annihilation indices
                 anni_idx = []
@@ -523,6 +567,9 @@ def propagate_state_SA(
                     tmp_state,
                     op_folded.operators[fermi_label],
                 )
+            print(state.shape)
+            print(tmp_state.shape)
+            exit()
             new_state = np.copy(tmp_state)
     return new_state
 
