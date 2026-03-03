@@ -52,17 +52,25 @@ typedef struct {
   int len;
 } operators;
 
-std::vector<double> apply_operator_SA_c(
-    const std::vector<double> &state, const std::vector<double> &tmp_state,
-    const std::vector<uint64_t> &idx2det,
+Eigen::MatrixXd apply_operator_SA_c(
+    const Eigen::MatrixXd &state, const std::vector<uint64_t> &idx2det,
     const std::map<int, int> &det2idx, /* direct lookup table */
     const uint64_t det_lookup_size, const int n_dets, const operators operators,
     const int num_active_orbs, const std::vector<uint64_t> &parity_check) {
-  std::vector<double> tmp_state2 = tmp_state;
+  Eigen::MatrixXd tmp_state2 =
+      Eigen::MatrixXd::Zero(state.rows(), state.cols());
   for (int i = 0; i < n_dets; ++i) {
-
-    if (fabs(state[i]) < 1e-14)
+    bool is_non_zero = false;
+    for (auto a : state.col(i)) {
+      if (std::abs(a) > 1e-14) {
+        is_non_zero = true;
+        break;
+      }
+    }
+    if (!is_non_zero)
       continue;
+    // if (state.col(i).cwiseAbs().maxCoeff() < 1e-14)
+    //   break;
 
     uint64_t det = idx2det[i];
     int phase_changes = 0;
@@ -72,16 +80,17 @@ std::vector<double> apply_operator_SA_c(
       int orb_idx = operators.annihilator[a];
       int shift = 2 * num_active_orbs - 1 - orb_idx;
       uint64_t mask = 1ULL << shift;
-      if ((det & mask) == 0) {
+      if (((det >> shift) & 1) == 0) {
         killstate = 1;
         break;
       }
-      // std::cout << "determinant: " << fmt::format("0x{:016b}", det) <<
-      // std::endl; std::cout << "mask       : " << fmt::format("0x{:016b}",
-      // mask) << std::endl;
+      std::cout << "determinant: " << fmt::format("0x{:016b}", det)
+                << std::endl;
+      std::cout << "mask       : " << fmt::format("0x{:016b}", mask)
+                << std::endl;
       det ^= mask;
-      // std::cout << "determinant: " << fmt::format("0x{:016b}", det) <<
-      // std::endl;
+      std::cout << "determinant: " << fmt::format("0x{:016b}", det)
+                << std::endl;
       phase_changes += bitcount(det & parity_check[orb_idx]);
     }
     if (killstate)
@@ -92,16 +101,17 @@ std::vector<double> apply_operator_SA_c(
       int shift = 2 * num_active_orbs - 1 - orb_idx;
       uint64_t mask = 1ULL << shift;
 
-      if ((det & mask) != 0) {
+      if (((det >> shift) & 1) == 1) {
         killstate = 1;
         break;
       }
-      // std::cout << "determinant: " << fmt::format("0x{:016b}", det) <<
-      // std::endl; std::cout << "mask       : " << fmt::format("0x{:016b}",
-      // mask) << std::endl;
+      std::cout << "determinant: " << fmt::format("0x{:016b}", det)
+                << std::endl;
+      std::cout << "mask       : " << fmt::format("0x{:016b}", mask)
+                << std::endl;
       det ^= mask;
-      // std::cout << "determinant: " << fmt::format("0x{:016b}", det) <<
-      // std::endl;
+      std::cout << "determinant: " << fmt::format("0x{:016b}", det)
+                << std::endl;
       phase_changes += bitcount(det & parity_check[orb_idx]);
     }
     if (killstate)
@@ -113,18 +123,25 @@ std::vector<double> apply_operator_SA_c(
     if (new_idx < 0)
       continue;
     double sign = (phase_changes % 2 == 0) ? 1.0 : -1.0;
-    tmp_state2[new_idx] += operators.factor * sign * state[i];
+    std::cout << "new_idx: " << new_idx << std::endl;
+    std::cout << "sign: " << sign << std::endl;
+    std::cout << "operators.factor: " << operators.factor << std::endl;
+    std::cout << "state.col(i): " << state.col(i) << std::endl;
+    std::cout << "operators.factor * sign * state.col(i): "
+              << operators.factor * sign * state.col(i) << std::endl;
+    tmp_state2.col(new_idx) += operators.factor * sign * state.col(i);
   }
   return tmp_state2;
 }
 
 #ifdef PYBIND11_BUILD
 
-py::array_t<double> py_opLoop(
+Eigen::MatrixXd py_opLoop(
     // op_folded_operators: dict{ tuple[tuple[int,bool],...] : float }
-    py::dict py_ops, int num_active_orbs, py::array_t<uint64_t> py_parity_check,
-    py::array_t<uint64_t> py_idx2det, py::dict py_det2idx, bool do_unsafe,
-    py::EigenDRef<Eigen::MatrixXd> py_state) {
+    const py::dict py_ops, const int num_active_orbs,
+    const py::array_t<uint64_t> py_parity_check,
+    const py::array_t<uint64_t> py_idx2det, const py::dict py_det2idx,
+    const bool do_unsafe, const py::EigenDRef<Eigen::MatrixXd> py_state) {
 
   std::vector<uint64_t> idx2det = py_idx2det.cast<std::vector<uint64_t>>();
   std::map<int, int> det2idx = py_det2idx.cast<std::map<int, int>>();
@@ -212,54 +229,44 @@ py::array_t<double> py_opLoop(
   // std::cout << operator6.size() << std::endl;
   // std::cout << operator8.size() << std::endl;
   // std::cout << py_det2idx << std::endl;
-  py::array_t<double> py_statel;
-
-  std::vector<double> state(static_cast<double *>(py_state.request().ptr),
-                            static_cast<double *>(py_state.request().ptr) +
-                                py_state.request().size);
-  std::vector<double> tmp_state(state.size());
-
-  std::vector<std::vector<double>> tmp_stateV(
-      operator2.size() + operator4.size() + operator6.size() +
-      operator8.size());
+  Eigen::MatrixXd state = py_state;
+  Eigen::MatrixXd tmp_state(state.rows(), state.cols());
+  std::vector<Eigen::MatrixXd> tmp_stateV(operator2.size() + operator4.size() +
+                                          operator6.size() + operator8.size());
   //#pragma omp parallel for
-  for (int i = 0; i < operator2.size(); i++) {
-    tmp_stateV[i] = apply_operator_SA_c(state, tmp_state, idx2det, det2idx,
-                                        det_lookup_size, n_dets, operator2[i],
-                                        num_active_orbs, parity_check);
+  for (size_t i = 0; i < operator2.size(); i++) {
+    tmp_stateV[i] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator2[i], num_active_orbs, parity_check);
   }
 
   // std::cout << "tmp_stateV size: " << tmp_stateV.size() << std::endl;
 
   //#pragma omp parallel for
   for (size_t i = 0; i < operator4.size(); i++) {
-    tmp_stateV[i + operator2.size()] = apply_operator_SA_c(
-        state, tmp_state, idx2det, det2idx, det_lookup_size, n_dets,
-        operator4[i], num_active_orbs, parity_check);
+    tmp_stateV[i + operator2.size()] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator4[i], num_active_orbs, parity_check);
   }
+
   //#pragma omp parallel for
   for (size_t i = 0; i < operator6.size(); i++) {
-    tmp_stateV[i + operator2.size() + operator4.size()] = apply_operator_SA_c(
-        state, tmp_state, idx2det, det2idx, det_lookup_size, n_dets,
-        operator6[i], num_active_orbs, parity_check);
+    tmp_stateV[i + operator2.size() + operator4.size()] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator6[i], num_active_orbs, parity_check);
   }
   //#pragma omp parallel for
   for (size_t i = 0; i < operator8.size(); i++) {
     tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()] =
-        apply_operator_SA_c(state, tmp_state, idx2det, det2idx, det_lookup_size,
-                            n_dets, operator8[i], num_active_orbs,
-                            parity_check);
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator8[i], num_active_orbs, parity_check);
   }
   //#pragma omp parallel for
   for (size_t i = 0; i < tmp_stateV.size(); i++) {
-    for (size_t j = 0; j < tmp_stateV[i].size(); j++) {
-      tmp_state[j] += tmp_stateV[i][j];
-    }
+    tmp_state += tmp_stateV[i];
   }
 
-  py_statel = py::array_t<double>(tmp_state.size(), tmp_state.data());
-  // std::cout << py_statel << std::endl;
-  return py_statel;
+  return tmp_state;
 }
 
 PYBIND11_MODULE(fermionic_ops, m) {
