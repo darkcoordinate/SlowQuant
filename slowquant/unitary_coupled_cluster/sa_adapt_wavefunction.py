@@ -9,6 +9,7 @@ import numpy as np
 import scipy
 import scipy.optimize
 import matplotlib.pyplot as plt
+import time
 #from rich import print
 
 from slowquant.molecularintegrals.integralfunctions import (
@@ -477,8 +478,9 @@ class WaveFunctionSAADAPT:
         ) + self.facSpin*Spin
         
         grad = []
-        
+        print(len(self.excitation_pool_type))
         for i in range(len(self.excitation_pool_type)):
+            print(i,time.time())
             T = None
             if self.excitation_pool_type[i] == "single":
                 (i, a) = np.array(self.excitation_pool[i]) 

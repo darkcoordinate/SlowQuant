@@ -405,10 +405,6 @@ def propagate_state(
             else:
                 op_folded = op
             # loop over all strings of annihilation operators in FermionicOperator sum
-
-
-            print(op_folded.operators)
-
             for fermi_label in op_folded.operators.keys():
                 # Separate each annihilation operator string in creation and annihilation indices
                 anni_idx = []
@@ -462,7 +458,7 @@ def opLoop(op_folded_operators,num_active_orbs,parity_check,idx2det,det2idx,do_u
         )
     return np.copy(tmp_state)
 
-def propagate_state_SA(
+def propagate_state_SA_c(
     operators: list[FermionicOperator | str],
     state: np.ndarray,
     ci_info: CI_Info,
@@ -537,21 +533,88 @@ def propagate_state_SA(
             else:
                 op_folded = op
             # loop over all strings of annihilation operators in FermionicOperator sum
-            #new_state = opLoop(op_folded.operators,num_active_orbs,parity_check,idx2det,det2idx,do_unsafe,tmp_state)
-            #print(det2idx)
-            #print(do_unsafe)
-            #print(idx2det)
-            print()
-            print(dict(det2idx))
-            statec= fops.op_loop(op_folded.operators
-            ,num_active_orbs,parity_check,idx2det,
-            dict(det2idx)
-            ,do_unsafe
-            ,new_state)
-            
-            #exit()
+            tmp_state= fops.op_loop(op_folded.operators,num_active_orbs,parity_check,idx2det,
+            dict(det2idx),do_unsafe,new_state)
+            new_state = np.copy(tmp_state)
+    return new_state
 
-            print(new_state)
+
+
+
+def propagate_state_SA_p(
+    operators: list[FermionicOperator | str],
+    state: np.ndarray,
+    ci_info: CI_Info,
+    thetas: Sequence[float],
+    wf_struct: UpsStructure,
+    do_folding: bool = True,
+    do_unsafe: bool = False,
+) -> np.ndarray:
+    r"""Propagate state by applying operator.
+
+    The operator will be folded to only work on the active orbitals.
+    The resulting state should not be acted on with another folded operator.
+    This would violate the "do not multiply folded operators" rule.
+
+    .. math::
+        \left|\tilde{0}\right> = \hat{O}\left|0\right>
+
+    Args:
+        operators: List of operators.
+        state: State.
+        ci_info: Information about the CI space.
+        thetas: Active-space parameters.
+               Ordered as (S, D, T, ...).
+        wf_struct: wave function structure object.
+        do_folding: Do folding of operator (default: True).
+        do_unsafe: Ignore elements that are outside the space defined in ci_info. (default: False)
+                If not ignored, getting elements outside the space will stop the calculation.
+
+    Returns:
+        New state.
+    """    
+    idx2det = ci_info.idx2det
+    det2idx = ci_info.det2idx
+    num_inactive_orbs = ci_info.num_inactive_orbs
+    num_active_orbs = ci_info.num_active_orbs
+    num_virtual_orbs = ci_info.num_virtual_orbs
+    if len(operators) == 0:
+        return np.copy(state)
+    new_state = np.copy(state)
+    tmp_state = np.zeros_like(state)
+    # Create bitstrings for parity check. Contains occupied determinant up to orbital index.
+    parity_check = np.zeros(2 * num_active_orbs + 1, dtype=int)
+    num = 0
+    for i in range(2 * num_active_orbs - 1, -1, -1):
+        num += 2**i
+        parity_check[2 * num_active_orbs - i] = num
+    
+    for op in operators[::-1]:
+        # Ansatz unitary in operators
+        if isinstance(op, str):
+            if op not in ("U", "Ud"):
+                raise ValueError(f"Unknown str operator, expected ('U', 'Ud') got {op}")
+            dagger = False
+            if op == "Ud":
+                dagger = True
+            if isinstance(wf_struct, UpsStructure):
+                new_state = construct_ups_state_SA(
+                    new_state,
+                    ci_info,
+                    thetas,
+                    wf_struct,
+                    dagger=dagger,
+                )
+            else:
+                raise TypeError(f"Got unknown wave function structure type, {type(wf_struct)}")
+        # FermionicOperator in operators
+        else:
+            tmp_state[:] = 0.0
+            # Fold operator to only get active contributions
+            if do_folding:
+                op_folded = op.get_folded_operator(num_inactive_orbs, num_active_orbs, num_virtual_orbs)
+            else:
+                op_folded = op
             
             for fermi_label in op_folded.operators.keys():
                 # Separate each annihilation operator string in creation and annihilation indices
@@ -576,15 +639,13 @@ def propagate_state_SA(
                     tmp_state,
                     op_folded.operators[fermi_label],
                 )
-            print("fine")
-            print(statec)
-            print()
-            print(tmp_state)
-
-            exit()
-            #new_state = np.copy(tmp_state)
+ 
+            new_state = np.copy(tmp_state)
     return new_state
 
+
+
+propagate_state_SA = propagate_state_SA_c
 
 def expectation_value(
     bra: np.ndarray,
