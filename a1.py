@@ -20,6 +20,7 @@ Since all states, are includes in the subspace expansion.
 """
 from pyscf import gto, scf ,mcscf
 import numpy as np
+np.set_printoptions(threshold=sys.maxsize,linewidth=100000,precision=2)
 atm= """
 C        0.0001201395   -0.0000565799   -0.0000000000;
 O        1.2796857221    0.0000273114    0.0000000000;
@@ -44,16 +45,13 @@ mf.kernel()
 
 print(mol.nelec)
 print(mf.e_tot - mf.energy_nuc())
+lc = [[1.0],[1.0],[1.0],[1.0]]
+ld = [["0011"],["0110"],["1001"],["1100"]]
 
-WF = WaveFunctionSAADAPT(
-#WF = WaveFunctionUPS(
-    mol.nelec[0] + mol.nelec[1],
-    (4, 4),
-    mf.mo_coeff,
-    mol.intor("int1e_kin") + mol.intor("int1e_nuc"),
-    mol.intor("int2e"),
-    (
-            [
+
+
+
+c=[
             
                 [1.0],
                 [1.0],
@@ -92,8 +90,8 @@ WF = WaveFunctionSAADAPT(
                 [1.0],
                 [1.0],
                 
-            ],
-            [
+            ]
+d =              [
                 ["00001111"],
                 ["00011011"],
                 ["00011110"],
@@ -130,14 +128,24 @@ WF = WaveFunctionSAADAPT(
                 ["11100001"],
                 ["11100100"],
                 ["11110000"],
-            ],
-    ),
+            ]
+
+WF = WaveFunctionSAADAPT(
+#WF = WaveFunctionUPS(
+    mol.nelec[0] + mol.nelec[1],
+    (4, 4),
+    mf.mo_coeff,
+    mol.intor("int1e_kin") + mol.intor("int1e_nuc"),
+    mol.intor("int2e"),
+    (
+        c,d),
     "ADAPT",
     target_spin =  0,
     unpaired_electron = 0,
     spinfactor=0.01,
     state_specific=True
 )
+
 ikl = [
                 ["00001111"],
                 ["00011011"],

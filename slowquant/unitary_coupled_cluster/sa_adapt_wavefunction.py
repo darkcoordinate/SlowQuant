@@ -250,7 +250,7 @@ class WaveFunctionSAADAPT:
         
         self.num_det = len(self.ci_info.idx2det)
         for i in self.ci_info.idx2det:
-            print("{:08b}".format(i))
+            print("{:04b}".format(i))
         # SA details
         self.num_states = len(states[0])
         self.csf_coeffs = np.zeros((self.num_states, self.num_det))  # state vector for each state in SA

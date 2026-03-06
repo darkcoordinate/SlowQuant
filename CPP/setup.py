@@ -1,4 +1,5 @@
 from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext
 import pybind11
 import subprocess
 import sys
@@ -53,7 +54,7 @@ class EigenBuildExt(build_ext):
 # ---------------------------------------------------------------------------
 ext = Extension(
     name="fermionic_ops",                     # import name in Python
-    sources=["m1.cpp"],
+    sources=["propagate.cpp"],
     include_dirs=[
         pybind11.get_include(),               # pybind11 headers
         *extra_include,
@@ -74,6 +75,8 @@ setup(
     author="",
     description="Fermionic operator loop (opLoop) exposed via pybind11",
     ext_modules=[ext],
+    cmdclass={"build_ext": EigenBuildExt},
     zip_safe=False,
     python_requires=">=3.8",
 )
+

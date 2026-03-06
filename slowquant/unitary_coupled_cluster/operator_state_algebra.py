@@ -188,7 +188,7 @@ def add_operator_matrix(
     return op_mat
 
 
-@nb.jit( nopython=True)
+#@nb.jit( nopython=True)
 def apply_operator_SA(
     state: np.ndarray,
     anni_idxs: np.ndarray,
@@ -266,6 +266,10 @@ def apply_operator_SA(
                 continue
         val = factor * (-1) ** phase_changes
         tmp_state[:, det2idx[det]] += val * state[:, i]  # Update value
+    #     print("{:08b}".format(det2idx[det])+" {:08b}".format(det))
+    #     print(tmp_state)
+    #     print()
+    # print("##################################################################")
     return tmp_state
 
 
@@ -293,6 +297,7 @@ def build_operator_matrix(op: FermionicOperator, ci_info: CI_Info, do_unsafe: bo
         num += 2**i
         parity_check[2 * num_active_orbs - i] = num
     # loop over all strings of annihilation operators in FermionicOperator sum
+
     for fermi_label in op.operators.keys():
         # Separate each annihilation operator string in creation and annihilation indices
         anni_idx = []
@@ -537,12 +542,16 @@ def propagate_state_SA(
             #print(do_unsafe)
             #print(idx2det)
             print()
-            state = fops.op_loop(op_folded.operators
+            print(dict(det2idx))
+            statec= fops.op_loop(op_folded.operators
             ,num_active_orbs,parity_check,idx2det,
             dict(det2idx)
             ,do_unsafe
             ,new_state)
+            
             #exit()
+
+            print(new_state)
             
             for fermi_label in op_folded.operators.keys():
                 # Separate each annihilation operator string in creation and annihilation indices
@@ -567,10 +576,13 @@ def propagate_state_SA(
                     tmp_state,
                     op_folded.operators[fermi_label],
                 )
-            print(state.shape)
-            print(tmp_state.shape)
+            print("fine")
+            print(statec)
+            print()
+            print(tmp_state)
+
             exit()
-            new_state = np.copy(tmp_state)
+            #new_state = np.copy(tmp_state)
     return new_state
 
 
