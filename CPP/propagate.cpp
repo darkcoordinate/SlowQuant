@@ -74,14 +74,11 @@ Eigen::MatrixXd apply_operator_SA_c(const Eigen::MatrixXd &state,
 
   Eigen::MatrixXd tmp_state2 =
       Eigen::MatrixXd::Zero(state.rows(), state.cols());
-  // ops.print();
-  // std::cout << n_dets << std::endl;
   for (int i = 0; i < n_dets; ++i) {
     bool is_non_zero = (state.col(i).array().abs() > 1e-14).any();
     if (!is_non_zero)
       continue;
     uint64_t det = idx2det[i];
-    // std::cout<<std::bitset<8>(det)<<std::endl;
     int phase_changes = 0;
     int killstate = 0;
 
@@ -114,28 +111,20 @@ Eigen::MatrixXd apply_operator_SA_c(const Eigen::MatrixXd &state,
     }
     if (killstate)
       continue;
-    // std::cout<<"fiehhf"<<det<<" "<<det_lookup_size<<std::endl;
-    // if (det >= det_lookup_size) continue;
     int new_idx = det2idx.at(static_cast<int>(det));
     double sign = (phase_changes % 2 == 0) ? 1.0 : -1.0;
-    // std::cout<<std::bitset<8>(det)<<" "<<ops.factor * sign<<std::endl;
     tmp_state2.col(new_idx) += ops.factor * sign * state.col(i);
-    // std::cout<<tmp_state2<<std::endl;
   }
-
   return tmp_state2;
 }
 
 #ifdef PYBIND11_BUILD
 
-Eigen::MatrixXd py_opLoop(
-
-    // op_folded_operators: dict{ tuple[tuple[int,bool],...] : float }
-    const py::dict py_ops, const int num_active_orbs,
-    const py::array_t<uint64_t> py_parity_check,
-    const py::array_t<uint64_t> py_idx2det, const py::dict py_det2idx,
-    const bool do_unsafe, const py::EigenDRef<Eigen::MatrixXd> py_state) {
-  // Eigen::IOFormat OctaveFmt(2, 0, ", ", ";\n", "", "", "[", "]");
+Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
+                          const py::array_t<uint64_t> py_parity_check,
+                          const py::array_t<uint64_t> py_idx2det,
+                          const py::dict py_det2idx, const bool do_unsafe,
+                          const py::EigenDRef<Eigen::MatrixXd> py_state) {
   std::vector<uint64_t> idx2det = py_idx2det.cast<std::vector<uint64_t>>();
   std::map<uint64_t, uint64_t> det2idx =
       py_det2idx.cast<std::map<uint64_t, uint64_t>>();
@@ -144,15 +133,10 @@ Eigen::MatrixXd py_opLoop(
   std::vector<uint64_t> parity_check =
       py_parity_check.cast<std::vector<uint64_t>>();
 
-  // std::cout << py_ops.size() << std::endl;
-  // collect all operators in 4 different types of vector depenping  on
-  // py_label_list size
-  // first one is creation and annihilation
   std::vector<operators> operator2;
   std::vector<operators> operator4;
   std::vector<operators> operator6;
   std::vector<operators> operator8;
-  // std::cout << py_ops << std::endl;
   for (auto item : py_ops) {
     py::tuple py_label = item.first.cast<py::tuple>();
     if (py_label.size() == 2) {
@@ -168,7 +152,6 @@ Eigen::MatrixXd py_opLoop(
           op.annihilator.push_back(orb);
       }
       op.len = 2;
-      // op.print();
       operator2.push_back(op);
     } else if (py_label.size() == 4) {
       operators op;
@@ -183,7 +166,6 @@ Eigen::MatrixXd py_opLoop(
           op.annihilator.push_back(orb);
       }
       op.len = 4;
-      // op.print();
       operator4.push_back(op);
     }
 
@@ -200,14 +182,13 @@ Eigen::MatrixXd py_opLoop(
           op.annihilator.push_back(orb);
       }
       op.len = 6;
-      // op.print();
+
       operator6.push_back(op);
     } else if (py_label.size() == 8) {
       operators op;
       op.factor = item.second.cast<double>();
       for (py::size_t i = 0; i < py_label.size(); i++) {
         py::tuple py_op = py_label[i].cast<py::tuple>();
-        // std::cout << py_op;
         int orb = py_op[0].cast<int>();
         bool is_creation = py_op[1].cast<bool>();
         if (is_creation)
@@ -216,59 +197,50 @@ Eigen::MatrixXd py_opLoop(
           op.annihilator.push_back(orb);
       }
       op.len = 8;
-      // op.print();
       operator8.push_back(op);
     } else {
       operators op;
       op.factor = item.second.cast<double>();
       op.len = 0;
-      // op.print();
       operator2.push_back(op);
     }
   }
-  // std::cout << operator2.size() << std::endl;
-  // std::cout << operator4.size() << std::endl;
-  // std::cout << operator6.size() << std::endl;
-  // std::cout << operator8.size() << std::endl;
-  // std::cout << py_det2idx << std::endl;
   Eigen::MatrixXd state = py_state;
   Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
   std::vector<Eigen::MatrixXd> tmp_stateV(operator2.size() + operator4.size() +
                                           operator6.size() + operator8.size());
-  // std::cout<<state.format(OctaveFmt)<<std::endl;
-  //#pragma omp parallel for
+  // std::cout << state.format(OctaveFmt) << std::endl;
+
+#pragma omp parallel for
   for (size_t i = 0; i < operator2.size(); i++) {
     tmp_stateV[i] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator2[i], num_active_orbs, parity_check);
   }
-
-  // std::cout << "tmp_stateV size: " << tmp_stateV.size() << std::endl;
-
-  //#pragma omp parallel for
+#pragma omp parallel for
   for (size_t i = 0; i < operator4.size(); i++) {
     tmp_stateV[i + operator2.size()] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator4[i], num_active_orbs, parity_check);
   }
 
-  //#pragma omp parallel for
+#pragma omp parallel for
   for (size_t i = 0; i < operator6.size(); i++) {
     tmp_stateV[i + operator2.size() + operator4.size()] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator6[i], num_active_orbs, parity_check);
   }
-  //#pragma omp parallel for
+#pragma omp parallel for
   for (size_t i = 0; i < operator8.size(); i++) {
     tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator8[i], num_active_orbs, parity_check);
   }
-  //#pragma omp parallel for
+
   for (size_t i = 0; i < tmp_stateV.size(); i++) {
+
     tmp_state += tmp_stateV[i];
   }
-  // std::cout<<tmp_state<<std::endl;
 
   return tmp_state;
 }

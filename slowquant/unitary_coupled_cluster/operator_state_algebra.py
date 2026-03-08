@@ -266,10 +266,6 @@ def apply_operator_SA(
                 continue
         val = factor * (-1) ** phase_changes
         tmp_state[:, det2idx[det]] += val * state[:, i]  # Update value
-    #     print("{:08b}".format(det2idx[det])+" {:08b}".format(det))
-    #     print(tmp_state)
-    #     print()
-    # print("##################################################################")
     return tmp_state
 
 
@@ -639,7 +635,6 @@ def propagate_state_SA_p(
                     tmp_state,
                     op_folded.operators[fermi_label],
                 )
- 
             new_state = np.copy(tmp_state)
     return new_state
 
@@ -763,6 +758,7 @@ def expectation_vector_SA(
     )
     #val = np.einsum("ij,ij->", bra, op_ket)
     val = bra@op_ket.T
+    #exit()
     #if not isinstance(val, float):
     #    raise ValueError(f"Calculated expectation value is not a float, got type {type(val)}")
     return val

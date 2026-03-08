@@ -39,12 +39,11 @@ if not extra_libs:
 class EigenBuildExt(build_ext):
     def build_extensions(self):
         # 1. Define Eigen version and path
-        eigen_dir = os.path.abspath("../come/eigen")
+        eigen_dir = os.path.abspath("eigen")
 
         # 3. Add Eigen to include paths for all extensions
         for ext in self.extensions:
             ext.include_dirs.append(eigen_dir)
-            
         super().build_extensions()
 
 

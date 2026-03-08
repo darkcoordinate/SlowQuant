@@ -39,6 +39,70 @@ These features are also implemented with the active-space approximation and orbi
 SlowQuant also got some conventional methods, such as Hartree-Fock and molecular integrals.
 Just use [PySCF](https://github.com/pyscf/pyscf) instead.
 
+
+## C++ Assistance
+
+If you have learned the concepts of quantum chemistry using **SlowQuant** and verified that the implementation works correctly, you may notice that the current Python implementation can be slow for larger problems. To improve performance, parts of the codebase can be implemented in **C++** using **OpenMP** for parallelism and **pybind11** for Python bindings.
+
+This branch provides a C++ implementation that integrates with Python while taking advantage of faster compiled code.
+
+Before proceeding, ensure the following dependencies are installed on your system:
+
+* **pybind11**
+* **OpenMP**
+* **fmt**
+
+---
+
+### 1. Clone Eigen
+
+The C++ implementation uses **Eigen**, a high-performance C++ linear algebra library.
+
+Navigate to the `SlowQuant/CPP` directory and clone the Eigen repository:
+
+```bash
+cd SlowQuant/CPP
+git clone https://gitlab.com/libeigen/eigen.git
+```
+
+---
+
+### 2. Build the C++ Project
+
+Compile the C++ extension module using:
+
+```bash
+python setup.py build
+```
+
+This will generate a compiled dynamic library (`.so` file) inside the `build` directory.
+
+---
+
+### 3. Copy the Compiled Library
+
+To use the compiled module in your Python script, copy the generated library to your working directory.
+
+For example, if you want to run the script `a1.py`, copy the compiled module:
+
+```bash
+cd ..
+cp CPP/build/lib.linux-x86_64-cpython-313/fermionic_ops.cpython-313-x86_64-linux-gnu.so .
+```
+
+---
+
+### 4. Run the Example
+
+Now you can run the Python script:
+
+```bash
+python a1.py
+```
+
+The Python code will automatically load the compiled C++ module, enabling faster execution for the relevant operations.
+
+
 ## Cited in
 
 - Kjellgren, E. R., Ziems, K. M., Reinholdt, P., Sauer, S., Coriani, S., & Kongsted, J. (2025). Exact closed-form expression for unitary spin-adapted fermionic singlet double excitation operators. arXiv preprint arXiv:2505.00883.

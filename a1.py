@@ -1,10 +1,10 @@
 # type: ignore
 import os
-os.environ["OMP_NUM_THREADS"] = "2" # export OMP_NUM_THREADS=4
-os.environ["OPENBLAS_NUM_THREADS"] = "2" # export OPENBLAS_NUM_THREADS=4 
-os.environ["MKL_NUM_THREADS"] = "2" # export MKL_NUM_THREADS=6
-os.environ["VECLIB_MAXIMUM_THREADS"] = "2" # export VECLIB_MAXIMUM_THREADS=4
-os.environ["NUMEXPR_NUM_THREADS"] = "2" # export NUMEXPR_NUM_THREADS=6
+os.environ["OMP_NUM_THREADS"] = "6" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "6" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "6" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "6" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "6" # export NUMEXPR_NUM_THREADS=6
 import sys
 
 
@@ -170,15 +170,55 @@ ikl = [
                 ["1111111100000000"],
             ]
 
+
+ikl2 = [
+                ["00001111"],
+                ["00011011"],
+                ["00011110"],
+                ["01001011"],
+                ["01001110"],
+                ["01011010"],
+                ["00100111"],
+                ["00110011"],
+                ["00110110"],
+                ["01100011"],
+                ["01100110"],
+                ["01110010"],
+                ["00101101"],
+                ["00111001"],
+                ["00111100"],
+                ["01101001"],
+                ["01101100"],
+                ["01111000"],
+                ["10000111"],
+                ["10010011"],
+                ["10010110"],
+                ["11000011"],
+                ["11000110"],
+                ["11010010"],
+                ["10001101"],
+                ["10011001"],
+                ["10011100"],
+                ["11001001"],
+                ["11001100"],
+                ["11011000"],
+                ["10100101"],
+                ["10110001"],
+                ["10110100"],
+                ["11100001"],
+                ["11100100"],
+                ["11110000"],
+            ]
+
 WF = WaveFunctionSAADAPT(
 #WF = WaveFunctionUPS(
     mol.nelec[0] + mol.nelec[1],
-    (8, 8),
+    (4, 4),
     mf.mo_coeff,
     mol.intor("int1e_kin") + mol.intor("int1e_nuc"),
     mol.intor("int2e"),
     (
-        c,ikl),
+        c,ikl2),
     "ADAPT",
     target_spin =  0,
     unpaired_electron = 0,
