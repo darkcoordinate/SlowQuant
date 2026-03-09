@@ -476,7 +476,7 @@ class WaveFunctionSAADAPT:
         
         grad = []
         print("Number of excitation operators: ",len(self.excitation_pool_type))
-        Print("operator Index      Time Taken")
+        print("operator Index      Time Taken")
         Tm = time.time()
         for i in range(len(self.excitation_pool_type)):
             Ti = time.time()
