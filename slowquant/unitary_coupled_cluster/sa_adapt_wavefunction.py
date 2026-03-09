@@ -250,8 +250,8 @@ class WaveFunctionSAADAPT:
         print(f"Number of active β electrons    : {self.num_active_elec_beta}")
         
         self.num_det = len(self.ci_info.idx2det)
-        for i in self.ci_info.idx2det:
-            print("{:04b}".format(i))
+        #for i in self.ci_info.idx2det:
+        #    print("{:04b}".format(i))
         # SA details
         self.num_states = len(states[0])
         self.csf_coeffs = np.zeros((self.num_states, self.num_det))  # state vector for each state in SA
@@ -475,8 +475,13 @@ class WaveFunctionSAADAPT:
         ) + self.facSpin*Spin
         
         grad = []
+        print("Number of excitation operators: "len(self.excitation_pool_type))
+        Print("operator Index      Time Taken")
+        Tm = time.time()
         for i in range(len(self.excitation_pool_type)):
-            #print(i,time.time())
+            Ti = time.time()
+            print(i,"        ",Ti - Tm)
+            Tm = Ti
             T = None
             if self.excitation_pool_type[i] == "single":
                 (i, a) = np.array(self.excitation_pool[i]) 
