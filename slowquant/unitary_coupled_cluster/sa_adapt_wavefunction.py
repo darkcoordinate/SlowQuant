@@ -475,14 +475,14 @@ class WaveFunctionSAADAPT:
         ) + self.facSpin*Spin
         
         grad = []
-        print("Number of excitation operators: ",len(self.excitation_pool_type))
-        print("operator Index      Time Taken")
-        Tm = time.time()
+        #print("Number of excitation operators: ",len(self.excitation_pool_type))
+        #print("operator Index      Time Taken")
+        #Tm = time.time()
         for i in range(len(self.excitation_pool_type)):
-            Ti = time.time()
-            print(i,"        ",Ti - Tm)
-            Tm = Ti
-            T = None
+            #Ti = time.time()
+            #print(r" {:d}        {:f}".format(i,Ti - Tm))
+            #Tm = Ti
+            #T = None
             if self.excitation_pool_type[i] == "single":
                 (i, a) = np.array(self.excitation_pool[i]) 
                 T = G1(i, a, True)
