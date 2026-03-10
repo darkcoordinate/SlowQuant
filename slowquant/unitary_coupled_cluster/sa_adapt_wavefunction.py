@@ -482,7 +482,7 @@ class WaveFunctionSAADAPT:
             #Ti = time.time()
             #print(r" {:d}        {:f}".format(i,Ti - Tm))
             #Tm = Ti
-            #T = None
+            T = None
             if self.excitation_pool_type[i] == "single":
                 (i, a) = np.array(self.excitation_pool[i]) 
                 T = G1(i, a, True)
