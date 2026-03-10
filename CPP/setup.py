@@ -53,7 +53,7 @@ class EigenBuildExt(build_ext):
 # ---------------------------------------------------------------------------
 ext = Extension(
     name="fermionic_ops",                     # import name in Python
-    sources=["propagate.cpp"],
+    sources=["propagate.cpp", "fermionic_operator_py.cpp"],
     include_dirs=[
         pybind11.get_include(),               # pybind11 headers
         *extra_include,
