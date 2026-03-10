@@ -22,6 +22,7 @@ namespace py = pybind11;
 #include <stdint.h>
 #include <stdlib.h>
 
+int t1(const py::dict py_ops);
 /* -------- Bitcount (GCC/Clang) -------- */
 static inline int bitcount(uint64_t x) { return __builtin_popcountll(x); }
 
@@ -277,6 +278,7 @@ PYBIND11_MODULE(fermionic_ops, m) {
             Output CI coefficient vector after applying all operators.
         )doc",
         py::return_value_policy::move);
+  m.def("t1", &t1);
 }
 
 #endif // PYBIND11_BUILD

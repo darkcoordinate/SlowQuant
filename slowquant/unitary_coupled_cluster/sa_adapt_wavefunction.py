@@ -55,6 +55,8 @@ from slowquant.unitary_coupled_cluster.util import UpsStructure
 from slowquant.unitary_coupled_cluster.util import *
 
 
+import fermionic_ops as fops
+
 class WaveFunctionSAADAPT:
     def __init__(
         self,
@@ -316,6 +318,7 @@ class WaveFunctionSAADAPT:
         for a, i, b, j in iterate_t2_generalized(self.num_active_spin_orbs):
             self.excitation_pool.append((i+ self.num_inactive_spin_orbs, j + self.num_inactive_spin_orbs, a + self.num_inactive_spin_orbs, b + self.num_inactive_spin_orbs))
             self.excitation_pool_type.append("double")
+ 
        
         
         
@@ -339,6 +342,7 @@ class WaveFunctionSAADAPT:
         skip_optimisation_counter = 0
         for i in range(maxiter):
             grad = self.calculate_derivative_of_operator_pool()
+            exit()
             print()
             print("Printing Grad and Excitation Pool")
             print("#################################")
@@ -453,7 +457,7 @@ class WaveFunctionSAADAPT:
         print(nloop)
         
     
-        
+      
     
 
 
@@ -474,6 +478,7 @@ class WaveFunctionSAADAPT:
             self.num_active_orbs,
         ) + self.facSpin*Spin
         
+        fops.t1(Hamiltonian.operators)
         grad = []
         #print("Number of excitation operators: ",len(self.excitation_pool_type))
         #print("operator Index      Time Taken")
