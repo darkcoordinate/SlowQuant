@@ -22,13 +22,44 @@ namespace py = pybind11;
 #include <stdint.h>
 #include <stdlib.h>
 
-class FermionicOperator {};
+class FermionicOperator {
+  public:
+    std::map<std::vector<std::tuple<int , bool >>, double> operators;
+    FermionicOperator() = default;
+    explicit FermionicOperator(const std::vector<std::tuple<int , bool >>  &ops, const double fac){
+      operators.insert({ops,fac});
+    }
+
+    FermionicOperator operator+(const FermionicOperator& other) const {
+
+      FermionicOperator result;
+      result.operators = operators;
+      for (const auto& [ops, fac] : other.operators) {
+        result.operators[ops] += fac;
+        if(result.operators[ops] == 0) 
+          result.operators.erase(ops);
+      }
+      return result;
+    }
+
+
+};
 
 int t1(const py::dict py_ops) {
-  for (auto item : py_ops) {
-    std::cout << item.first << " \n";
-    std::cout << item.second << " \n";
+
+  auto i = py_ops.cast<std::map<std::vector<std::tuple<int , bool >>, double>>();
+  std::cout<<i.size()<<" : ";
+  for (auto item : i) {
+    //std::cout << item.first << " \n";
+    for (auto ai : item.first){
+      //std::cout<<ai<<" \n";
+      //auto pyl = ai.cast<std::tuple<int , bool >>();
+      std::cout<<std::get<0>(ai) << " "<<std::get<1>(ai) <<" ";
+    }
+    std::cout<<item.second<<" : ";
+    //std::cout << item.second << " \n";
   }
+  std::cout<<std::endl;
   return 0;
 }
 /* -------- Bitcount (GCC/Clang) -------- */

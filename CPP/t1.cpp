@@ -1,15 +1,26 @@
-#define PYBIND11_BUILD
-#ifdef PYBIND11_BUILD
-#include <Eigen/Dense>
+#include <iomanip>
 #include <iostream>
-#include <pybind11/eigen.h>
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-namespace py = pybind11;
-#endif
+#include <map>
+#include <string>
 
-int t1(const py::dict py_ops) {
-  std::cout << py_ops << std::endl;
-  return 0;
+int main(){
+  std::map<std::string, float> heights;
+  heights.insert({"John", 1.8});
+  heights.insert({"Jane", 1.6});
+  heights.insert({"Bob", 1.7});
+
+  std::map<std::string, float> heights2;
+  heights2.insert({"John", 1.8});
+  heights2.insert({"Jane", 1.6});
+  heights2.insert({"Bobb", 1.7});
+  std::cout<<heights2.size()<<std::endl;
+  for (const auto& [name, height] : heights) {
+    std::cout << name << ": " << height << "m\n";
+    heights2[name] += height;
+  }
+  std::cout<<" fij"<<std::endl;  
+  std::cout<<heights2.size()<<std::endl;
+  for (const auto& [name, height] : heights2) {
+    std::cout << name << ": " << height << "m\n";
+  }  
 }

@@ -318,7 +318,23 @@ class WaveFunctionSAADAPT:
         for a, i, b, j in iterate_t2_generalized(self.num_active_spin_orbs):
             self.excitation_pool.append((i+ self.num_inactive_spin_orbs, j + self.num_inactive_spin_orbs, a + self.num_inactive_spin_orbs, b + self.num_inactive_spin_orbs))
             self.excitation_pool_type.append("double")
- 
+
+        self.T_operators = []
+        self.T_operators_type = []
+
+        for i in range(len(self.excitation_pool_type)):            
+            T = None
+            if self.excitation_pool_type[i] == "single":
+                (mi, ma) = np.array(self.excitation_pool[i]) 
+                T = G1(mi, ma, True)
+            elif self.excitation_pool_type[i] == "double":
+                (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
+                T = G2(mi, mj, ma, mb, True)
+            if(len(T.operators) != 0):
+                self.T_operators.append(T)
+                self.T_operators_type.append(self.excitation_pool_type[i])
+        print(len(self.excitation_pool_type))
+        print(len(self.T_operators_type))
        
         
         
@@ -483,21 +499,22 @@ class WaveFunctionSAADAPT:
         #print("Number of excitation operators: ",len(self.excitation_pool_type))
         #print("operator Index      Time Taken")
         #Tm = time.time()
-        for i in range(len(self.excitation_pool_type)):
+        #for i in range(len(self.excitation_pool_type)):
+        for i in range(len(self.T_operators_type)):
             #Ti = time.time()
             #print(r" {:d}        {:f}".format(i,Ti - Tm))
             #Tm = Ti
             
-            T = None
-            if self.excitation_pool_type[i] == "single":
-                (mi, ma) = np.array(self.excitation_pool[i]) 
-                T = G1(mi, ma, True)
-            elif self.excitation_pool_type[i] == "double":
-                (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
-                T = G2(mi, mj, ma, mb, True)
-
-            print(self.excitation_pool_type[i])
+            T = self.T_operators[i]
+            #if self.excitation_pool_type[i] == "single":
+            #    (mi, ma) = np.array(self.excitation_pool[i]) 
+            #    T = G1(mi, ma, True)
+            #elif self.excitation_pool_type[i] == "double":
+            #    (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
+            #    T = G2(mi, mj, ma, mb, True)
+            print(T.operators)
             fops.t1(T.operators)
+            print("************************")
             if(self.state_specific):
                 gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
                                    self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]

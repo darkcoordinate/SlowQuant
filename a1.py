@@ -225,6 +225,7 @@ WF = WaveFunctionSAADAPT(
     spinfactor=0.01,
     state_specific=True
 )
+#exit()
 print(len(ikl))
 
 
