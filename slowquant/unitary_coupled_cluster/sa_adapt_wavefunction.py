@@ -478,7 +478,7 @@ class WaveFunctionSAADAPT:
             self.num_active_orbs,
         ) + self.facSpin*Spin
         
-        fops.t1(Hamiltonian.operators)
+        
         grad = []
         #print("Number of excitation operators: ",len(self.excitation_pool_type))
         #print("operator Index      Time Taken")
@@ -487,14 +487,17 @@ class WaveFunctionSAADAPT:
             #Ti = time.time()
             #print(r" {:d}        {:f}".format(i,Ti - Tm))
             #Tm = Ti
+            
             T = None
             if self.excitation_pool_type[i] == "single":
-                (i, a) = np.array(self.excitation_pool[i]) 
-                T = G1(i, a, True)
+                (mi, ma) = np.array(self.excitation_pool[i]) 
+                T = G1(mi, ma, True)
             elif self.excitation_pool_type[i] == "double":
-                (i, j, a, b) = np.array(self.excitation_pool[i]) 
-                T = G2(i, j, a, b, True)
-                
+                (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
+                T = G2(mi, mj, ma, mb, True)
+
+            print(self.excitation_pool_type[i])
+            fops.t1(T.operators)
             if(self.state_specific):
                 gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
                                    self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]

@@ -22,7 +22,15 @@ namespace py = pybind11;
 #include <stdint.h>
 #include <stdlib.h>
 
-int t1(const py::dict py_ops);
+class FermionicOperator {};
+
+int t1(const py::dict py_ops) {
+  for (auto item : py_ops) {
+    std::cout << item.first << " \n";
+    std::cout << item.second << " \n";
+  }
+  return 0;
+}
 /* -------- Bitcount (GCC/Clang) -------- */
 static inline int bitcount(uint64_t x) { return __builtin_popcountll(x); }
 
