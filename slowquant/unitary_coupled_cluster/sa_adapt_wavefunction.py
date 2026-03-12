@@ -321,8 +321,8 @@ class WaveFunctionSAADAPT:
 
         self.T_operators = []
         self.T_operators_type = []
-
-        for i in range(len(self.excitation_pool_type)):            
+        print(len(self.excitation_pool_type))
+        for i in range(len(self.excitation_pool_type)-1, -1, -1):           
             T = None
             if self.excitation_pool_type[i] == "single":
                 (mi, ma) = np.array(self.excitation_pool[i]) 
@@ -330,9 +330,10 @@ class WaveFunctionSAADAPT:
             elif self.excitation_pool_type[i] == "double":
                 (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
                 T = G2(mi, mj, ma, mb, True)
-            if(len(T.operators) != 0):
-                self.T_operators.append(T)
-                self.T_operators_type.append(self.excitation_pool_type[i])
+            if(len(T.operators) == 0):
+                self.excitation_pool_type.pop(i)
+                self.excitation_pool.pop(i)
+        
         print(len(self.excitation_pool_type))
         print(len(self.T_operators_type))
        
@@ -358,26 +359,25 @@ class WaveFunctionSAADAPT:
         skip_optimisation_counter = 0
         for i in range(maxiter):
             grad = self.calculate_derivative_of_operator_pool()
-            exit()
-            print()
-            print("Printing Grad and Excitation Pool")
-            print("#################################")
-            print(
-                    f"------GP{str("").center(72)}"
-                )
-            print(
-                    f"------GP{str("-----------------------------------------------------------------------------------").center(72)}"
-                )
-            print(
-                    f"------GP{str("Grad").center(27)} | {str("Excitation Pool indices").center(18)} | {str("Excitation Pool type").center(27)}"
-                )
-            for mi in range(len(grad)):
-                
-                print(
-                    f"------GP {str(mi).center(3)} {str(grad[mi]).center(27)} | {str(self.excitation_pool[mi]).center(18)} | {self.excitation_pool_type[mi].center(27)}"
-                )
-
-            print()
+            #exit()
+            #print()
+            #print("Printing Grad and Excitation Pool")
+            #print("#################################")
+            #print(
+            #        f"------GP{str("").center(72)}"
+            #    )
+            #print(
+            #        f"------GP{str("-----------------------------------------------------------------------------------").center(72)}"
+            #    )
+            #print(
+            #        f"------GP{str("Grad").center(27)} | {str("Excitation Pool indices").center(18)} | {str("Excitation Pool type").center(27)}"
+            #    )
+            #for mi in range(len(grad)):
+            #    
+            #    print(
+            #        f"------GP {str(mi).center(3)} {str(grad[mi]).center(27)} | {str(self.excitation_pool[mi]).center(18)} | {self.excitation_pool_type[mi].center(27)}"
+            #    )
+            #print()
             print(np.argmax(np.abs(grad)))
             max_arg = np.argmax(np.abs(grad))
             
@@ -404,6 +404,7 @@ class WaveFunctionSAADAPT:
                 break
             self.ups_layout.excitation_indices.append(np.array(self.excitation_pool[max_short[skip_optimisation_counter]])- self.num_inactive_spin_orbs)
             self.ups_layout.excitation_operator_type.append(self.excitation_pool_type[max_short[skip_optimisation_counter]])
+            
             #del self.excitation_pool[max_arg]
             #del self.excitation_pool_type[max_arg]
             self.ups_layout.n_params += 1
@@ -499,22 +500,23 @@ class WaveFunctionSAADAPT:
         #print("Number of excitation operators: ",len(self.excitation_pool_type))
         #print("operator Index      Time Taken")
         #Tm = time.time()
-        #for i in range(len(self.excitation_pool_type)):
-        for i in range(len(self.T_operators_type)):
+        for i in range(len(self.excitation_pool_type)):
+        #for i in range(len(self.T_operators_type)):
             #Ti = time.time()
             #print(r" {:d}        {:f}".format(i,Ti - Tm))
             #Tm = Ti
             
-            T = self.T_operators[i]
-            #if self.excitation_pool_type[i] == "single":
-            #    (mi, ma) = np.array(self.excitation_pool[i]) 
-            #    T = G1(mi, ma, True)
-            #elif self.excitation_pool_type[i] == "double":
-            #    (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
-            #    T = G2(mi, mj, ma, mb, True)
-            print(T.operators)
-            fops.t1(T.operators)
-            print("************************")
+            #T = self.T_operators[i]
+            T=None
+            if self.excitation_pool_type[i] == "single":
+                (mi, ma) = np.array(self.excitation_pool[i]) 
+                T = G1(mi, ma, True)
+            elif self.excitation_pool_type[i] == "double":
+                (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
+                T = G2(mi, mj, ma, mb, True)
+            #print(T.operators)
+            #fops.t1(T.operators)
+            #print("************************")
             if(self.state_specific):
                 gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
                                    self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
