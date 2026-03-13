@@ -16,287 +16,26 @@
 #include <pybind11/stl.h>
 namespace py = pybind11;
 #endif
-
 #include <math.h>
-
 #include <stdint.h>
 #include <stdlib.h>
-class FermionicOperator ;
-FermionicOperator do_extended_normal_ordering(const FermionicOperator& fermi);
-  
-class FermionicOperator {
-  public:
-    std::map<std::vector<std::tuple<int , bool >>, double> operators;
-    FermionicOperator() = default;
-    explicit FermionicOperator(const std::vector<std::tuple<int , bool >>  &ops, const double fac){
-      operators.insert({ops,fac});
-    }
 
-    FermionicOperator operator+(const FermionicOperator& other) const {
-
-      FermionicOperator result;
-      result.operators = operators;
-      for (const auto& [ops, fac] : other.operators) {
-        result.operators[ops] += fac;
-        if(result.operators[ops] == 0) 
-          result.operators.erase(ops);
-      }
-      return result;
-    }
-
-    FermionicOperator operator-(const FermionicOperator& other) const {
-
-      FermionicOperator result;
-      result.operators = operators;
-      for (const auto& [ops, fac] : other.operators) {
-        result.operators[ops] -= fac;
-        if(result.operators[ops] == 0) 
-          result.operators.erase(ops);
-      }
-      return result;
-    }
-
-    FermionicOperator operator*(double factor) const {
-      FermionicOperator result;
-      for (const auto& [ops, fac] : operators) {
-        double val = fac * factor;
-        if (std::abs(val) > 1e-14) {
-          result.operators[ops] = val;
-        }
-      }
-      return result;
-    }
-
-
-    // Multiply two FermionicOperator objects by performing normal ordering on the product of their operator strings.
-    FermionicOperator operator*(const FermionicOperator& other) const {
-        FermionicOperator result;
-        // Iterate over each operator string in the left operand.
-        for (const auto& [ops_left, fac_left] : this->operators) {
-            // Iterate over each operator string in the right operand.
-            for (const auto& [ops_right, fac_right] : other.operators) {
-                // Concatenate the operator vectors (left followed by right).
-                std::vector<std::tuple<int, bool>> combined = ops_left;
-                combined.insert(combined.end(), ops_right.begin(), ops_right.end());
-                // Create a temporary FermionicOperator for this combined string with the product of coefficients.
-                FermionicOperator temp({combined}, fac_left * fac_right);
-                // Perform extended normal ordering on the combined operator.
-                FermionicOperator ordered = do_extended_normal_ordering(temp);
-                // Merge the resulting ordered terms into the result.
-                for (const auto& [new_ops, new_fac] : ordered.operators) {
-                    result.operators[new_ops] += new_fac;
-                    // Remove near-zero coefficients to keep the representation clean.
-                    if (std::abs(result.operators[new_ops]) < 1e-14) {
-                        result.operators.erase(new_ops);
-                    }
-                }
-            }
-        }
-        return result;
-    }
-
-    FermionicOperator get_folded_operator(const int num_inactive_orbs, const int num_active_orbs, const int num_virtual_orbs){
-      FermionicOperator folded_operators;
-      std::vector<int> inactive_idx;
-      std::vector<int> active_idx;
-      std::vector<int> virtual_idx;
-      for(int i = 0; i < 2 * num_inactive_orbs + 2 * num_active_orbs + 2 * num_virtual_orbs; i++){
-        if( i < 2 * num_inactive_orbs){
-          inactive_idx.push_back(i);
-        }
-        else if (i < 2 * num_inactive_orbs + 2 * num_active_orbs){
-          active_idx.push_back(i);
-        }
-        else{
-          virtual_idx.push_back(i);
-        }
-      }
-
-      for(auto& [ops, fac] : operators){
-        std::vector<std::tuple<int, bool>> virtual_ = [];
-        std::vector<std::tuple<int, bool>> virtual_dagger = [];
-        std::vector<std::tuple<int, bool>> inactive = [];
-        std::vector<std::tuple<int, bool>> inactive_dagger = [];
-        std::vector<std::tuple<int, bool>> active = [];
-        std::vector<std::tuple<int, bool>> active_dagger = [];
-        double fac = 1;
-
-        for( auto anni : ops){
-          int idx = std::get<0>(anni);
-          bool dagger = std::get<1>(anni);
-          if(dagger){
-            if (std::find(inactive_idx.begin(), inactive_idx.end(), idx) != inactive_idx.end()) {
-              inactive_dagger.push_back(anni);
-            }
-            else if (std::find(active_idx.begin(), active_idx.end(), idx) != active_idx.end()) {
-              active_dagger.push_back(anni);
-            }
-            else{
-              virtual_dagger.push_back(anni);
-            }
-          }
-          else{
-            if (std::find(inactive_idx.begin(), inactive_idx.end(), idx) != inactive_idx.end()) {
-              inactive.push_back(anni);
-            }
-            else if (std::find(active_idx.begin(), active_idx.end(), idx) != active_idx.end()) {
-              active.push_back(anni);
-            }
-            else{
-              virtual_.push_back(anni);
-            }
-          }
-          
-        }
-        if(virtual_.size() != 0 || virtual_dagger.size() != 0){
-          continue;
-        }
-        auto active_op = active_dagger + active;
-        auto bra_side = inactive_dagger;
-        auto ket_side = inactive;
-
-        if(bra_side != ket_side){
-          continue;
-        }
-        if( inactive_dagger.size() % 2 == 1 && active_dagger.size() % 2 == 1){
-          fac *= -1;
-        }        
-        double ket_flip_fac = 1;
-        for(int i = 1; i < ket_side.size() + 1; i++){
-          if(i % 2 == 0){
-            ket_flip_fac *= -1;
-          }
-        }
-        fac *= ket_flip_fac;
-        auto new_key = std::make_tuple(active_op);
-        if(folded_operators.operators.count(new_key)){
-          folded_operators.operators[new_key] += fac * operators[ops];
-        }
-        else{
-          folded_operators.operators[new_key] = fac * operators[ops];
-        }
-      }
-      return folded_operators;
-    }
-
-
-};
-
-
-FermionicOperator do_extended_normal_ordering(const FermionicOperator& fermi) {
-    // Queue of operator strings and their coefficients.
-    std::vector<std::vector<std::tuple<int, bool>>> operator_queue;
-    std::vector<double> factor_queue;
-    // Initialize queues from the input operator map.
-    for (const auto& [ops, fac] : fermi.operators) {
-        operator_queue.push_back(ops);
-        factor_queue.push_back(fac);
-    }
-    // Result map to accumulate ordered operators.
-    std::map<std::vector<std::tuple<int, bool>>, double> new_operators;
-    // Process until queue is empty.
-    while (!operator_queue.empty()) {
-        // Pop front.
-        std::vector<std::tuple<int, bool>> next_operator = operator_queue.front();
-        double factor = factor_queue.front();
-        operator_queue.erase(operator_queue.begin());
-        factor_queue.erase(factor_queue.begin());
-        // Perform bubble‑style passes until no changes or term vanishes.
-        while (true) {
-            std::size_t current_idx = 0;
-            bool changed = false;
-            bool is_zero = false;
-            while (true) {
-                if (next_operator.empty() || current_idx + 1 >= next_operator.size()) break;
-                auto a = next_operator[current_idx];
-                auto b = next_operator[current_idx + 1];
-                int a_idx = std::get<0>(a);
-                int b_idx = std::get<0>(b);
-                bool a_cre = std::get<1>(a);
-                bool b_cre = std::get<1>(b);
-                // Both creation operators.
-                if (a_cre && b_cre) {
-                    if (a_idx == b_idx) {
-                        is_zero = true;
-                    } else if (a_idx < b_idx) {
-                        std::swap(next_operator[current_idx], next_operator[current_idx + 1]);
-                        factor = -factor;
-                        changed = true;
-                    }
-                }
-                // Annihilation then creation.
-                else if (!a_cre && b_cre) {
-                    if (a_idx == b_idx) {
-                        // Cancel both operators.
-                        std::vector<std::tuple<int, bool>> reduced = next_operator;
-                        reduced.erase(reduced.begin() + current_idx, reduced.begin() + current_idx + 2);
-                        if (!reduced.empty()) {
-                            operator_queue.push_back(reduced);
-                            factor_queue.push_back(factor);
-                        }
-                        std::swap(next_operator[current_idx], next_operator[current_idx + 1]);
-                        factor = -factor;
-                        changed = true;
-                    } else {
-                        std::swap(next_operator[current_idx], next_operator[current_idx + 1]);
-                        factor = -factor;
-                        changed = true;
-                    }
-                }
-                // Creation then annihilation – nothing to do.
-                else if (a_cre && !b_cre) {
-                    // pass
-                }
-                // Both annihilation operators.
-                else {
-                    if (a_idx == b_idx) {
-                        is_zero = true;
-                    } else if (a_idx < b_idx) {
-                        std::swap(next_operator[current_idx], next_operator[current_idx + 1]);
-                        factor = -factor;
-                        changed = true;
-                    }
-                }
-                ++current_idx;
-                if (current_idx + 1 >= next_operator.size() || is_zero) break;
-            }
-            if (!changed || is_zero) {
-                if (!is_zero) {
-                    auto it = new_operators.find(next_operator);
-                    if (it == new_operators.end()) {
-                        new_operators.emplace(next_operator, factor);
-                    } else {
-                        it->second += factor;
-                        if (std::abs(it->second) < 1e-14) {
-                            new_operators.erase(it);
-                        }
-                    }
-                }
-                break;
-            }
-        }
-    }
-    // Build FermionicOperator from the map.
-    FermionicOperator result;
-    result.operators = std::move(new_operators);
-    return result;
-}
-
+#include "fermionic_operator.hpp"
 int t1(const py::dict py_ops) {
 
-  auto i = py_ops.cast<std::map<std::vector<std::tuple<int , bool >>, double>>();
-  std::cout<<i.size()<<" : ";
+  auto i = py_ops.cast<std::map<std::vector<std::tuple<int, bool>>, double>>();
+  std::cout << i.size() << " : ";
   for (auto item : i) {
-    //std::cout << item.first << " \n";
-    for (auto ai : item.first){
-      //std::cout<<ai<<" \n";
-      //auto pyl = ai.cast<std::tuple<int , bool >>();
-      std::cout<<std::get<0>(ai) << " "<<std::get<1>(ai) <<" ";
+    // std::cout << item.first << " \n";
+    for (auto ai : item.first) {
+      // std::cout<<ai<<" \n";
+      // auto pyl = ai.cast<std::tuple<int , bool >>();
+      std::cout << std::get<0>(ai) << " " << std::get<1>(ai) << " ";
     }
-    std::cout<<item.second<<" : ";
-    //std::cout << item.second << " \n";
+    std::cout << item.second << " : ";
+    // std::cout << item.second << " \n";
   }
-  std::cout<<std::endl;
+  std::cout << std::endl;
   return 0;
 }
 /* -------- Bitcount (GCC/Clang) -------- */
@@ -533,17 +272,19 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
 //     int num_inactive_orbs = ci_info.attr("num_inactive_orbs").cast<int>();
 //     int num_active_orbs = ci_info.attr("num_active_orbs").cast<int>();
 //     int num_virtual_orbs = ci_info.attr("num_virtual_orbs").cast<int>();
-//     py::array_t<uint64_t> py_idx2det = ci_info.attr("idx2det").cast<py::array_t<uint64_t>>();
-//     py::dict py_det2idx = ci_info.attr("det2idx").cast<py::dict>();
+//     py::array_t<uint64_t> py_idx2det =
+//     ci_info.attr("idx2det").cast<py::array_t<uint64_t>>(); py::dict
+//     py_det2idx = ci_info.attr("det2idx").cast<py::dict>();
 
 //     if (operators.empty()) {
 //         return py_state;
 //     }
 
 //     // Initialize new_state as a copy of py_state
-//     // We use Eigen for internal matrix operations if needed, but here we work with numpy arrays mostly
-//     py::array_t<double> new_state = py_state.attr("copy")();
-    
+//     // We use Eigen for internal matrix operations if needed, but here we
+//     work with numpy arrays mostly py::array_t<double> new_state =
+//     py_state.attr("copy")();
+
 //     // Create parity_check bitstrings
 //     std::vector<uint64_t> parity_check(2 * num_active_orbs + 1, 0);
 //     uint64_t num = 0;
@@ -551,61 +292,63 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
 //         num += (1ULL << i);
 //         parity_check[i+1] = num;
 //     }
-//     // Reverse parity check order to match Python: parity_check[2 * num_active_orbs - i] = num
-//     std::vector<uint64_t> parity_check_mapped(2 * num_active_orbs + 1, 0);
-//     num = 0;
-//     for (int i = 2 * num_active_orbs - 1; i >= 0; --i) {
+//     // Reverse parity check order to match Python: parity_check[2 *
+//     num_active_orbs - i] = num std::vector<uint64_t> parity_check_mapped(2 *
+//     num_active_orbs + 1, 0); num = 0; for (int i = 2 * num_active_orbs - 1; i
+//     >= 0; --i) {
 //         num += (1ULL << i);
 //         parity_check_mapped[2 * num_active_orbs - i] = num;
 //     }
 
 //     // Import construct_ups_state_SA from Python if needed
-//     py::module_ osa = py::module_::import("slowquant.unitary_coupled_cluster.operator_state_algebra");
+//     py::module_ osa =
+//     py::module_::import("slowquant.unitary_coupled_cluster.operator_state_algebra");
 //     py::function construct_ups_state_SA = osa.attr("construct_ups_state_SA");
 
 //     // Loop over operators in reverse order
 //     for (int i = static_cast<int>(operators.size()) - 1; i >= 0; --i) {
 //         py::object op = operators[i];
-        
+
 //         if (py::isinstance<py::str>(op)) {
 //             std::string op_str = op.cast<std::string>();
 //             if (op_str != "U" && op_str != "Ud") {
-//                 throw py::value_error(fmt::format("Unknown str operator, expected ('U', 'Ud') got {}", op_str));
+//                 throw py::value_error(fmt::format("Unknown str operator,
+//                 expected ('U', 'Ud') got {}", op_str));
 //             }
 //             bool dagger = (op_str == "Ud");
 //             // Call Python construct_ups_state_SA
-//             new_state = construct_ups_state_SA(new_state, ci_info, thetas, wf_struct, dagger);
+//             new_state = construct_ups_state_SA(new_state, ci_info, thetas,
+//             wf_struct, dagger);
 //         } else {
 //             // FermionicOperator
 //             py::object op_folded;
 //             if (do_folding) {
-//                 op_folded = op.attr("get_folded_operator")(num_inactive_orbs, num_active_orbs, num_virtual_orbs);
+//                 op_folded = op.attr("get_folded_operator")(num_inactive_orbs,
+//                 num_active_orbs, num_virtual_orbs);
 //             } else {
 //                 op_folded = op;
 //             }
-            
-//             // Call py_opLoop (already implemented and exposed in this module)
-//             py::dict folded_operators = op_folded.attr("operators").cast<py::dict>();
-//             // Note: py_opLoop expects EigenDRef<Eigen::MatrixXd>, so we need to cast new_state
-//             // or just call it as a bound function if possible. 
+
+//             // Call py_opLoop (already implemented and exposed in this
+//             module) py::dict folded_operators =
+//             op_folded.attr("operators").cast<py::dict>();
+//             // Note: py_opLoop expects EigenDRef<Eigen::MatrixXd>, so we need
+//             to cast new_state
+//             // or just call it as a bound function if possible.
 //             // Since py_opLoop is in this file, we can call it.
 //             // But py_opLoop takes pybind11 types.
-            
-//             // We need to convert new_state to Eigen::MatrixXd for py_opLoop or just call it via pybind11
-//             new_state = py_opLoop(folded_operators, num_active_orbs, py::cast(parity_check_mapped), 
-//                                  py_idx2det, py_det2idx, do_unsafe, new_state.cast<py::EigenDRef<Eigen::MatrixXd>>());
+
+//             // We need to convert new_state to Eigen::MatrixXd for py_opLoop
+//             or just call it via pybind11 new_state =
+//             py_opLoop(folded_operators, num_active_orbs,
+//             py::cast(parity_check_mapped),
+//                                  py_idx2det, py_det2idx, do_unsafe,
+//                                  new_state.cast<py::EigenDRef<Eigen::MatrixXd>>());
 //         }
 //     }
 
 //     return new_state;
 // }
-
-
-
-
-
-
- 
 
 PYBIND11_MODULE(fermionic_ops, m) {
   m.doc() = "Fermionic operator loop (opLoop) exposed via pybind11";
@@ -640,8 +383,6 @@ PYBIND11_MODULE(fermionic_ops, m) {
         )doc",
         py::return_value_policy::move);
   m.def("t1", &t1);
-
-
 }
 
 #endif // PYBIND11_BUILD
