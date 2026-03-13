@@ -261,6 +261,18 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
   return tmp_state;
 }
 
+typedef struct {
+  det2idx idx2det num_active_elec_alpha num_active_elec_beta num_active_orbs
+      num_inactive_orbs num_virtual_orbs space_extension_offset
+} CI_Info;
+
+Eigen::MatrixXd
+py_propagate_state_SA(const py::dict py_ops, const int num_active_orbs,
+                      const py::array_t<uint64_t> py_parity_check,
+                      const py::array_t<uint64_t> py_idx2det,
+                      const py::dict py_det2idx, const bool do_unsafe,
+                      const py::EigenDRef<Eigen::MatrixXd> py_state) {}
+
 // py::array_t<double> py_propagate_state(const py::list& operators,
 //                                       const py::array_t<double>& py_state,
 //                                       const py::object& ci_info,
