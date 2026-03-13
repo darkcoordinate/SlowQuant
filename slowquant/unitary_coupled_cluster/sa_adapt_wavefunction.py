@@ -517,16 +517,20 @@ class WaveFunctionSAADAPT:
             #print(T.operators)
             #fops.t1(T.operators)
             #print("************************")
+            print(self.thetas)
+            print(self.ci_coeffs)
+            lg = fops.test_SA([T,Hamiltonian], self.ci_coeffs, self.ci_info, self.thetas , None, False)
+            print(lg)
             if(self.state_specific):
                 gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+                                   self.ci_info, self.thetas,None)[self.specific_state,self.specific_state]
                 gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+                                   self.ci_info, self.thetas,None)[self.specific_state,self.specific_state]
             else:
                 gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)
+                                   self.ci_info, self.thetas,None)
                 gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)
+                                   self.ci_info, self.thetas,None)
             grad.append(gr)      
         return grad
             

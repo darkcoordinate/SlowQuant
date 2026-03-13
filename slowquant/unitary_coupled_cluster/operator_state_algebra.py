@@ -501,12 +501,9 @@ def propagate_state_SA_c(
     for i in range(2 * num_active_orbs - 1, -1, -1):
         num += 2**i
         parity_check[2 * num_active_orbs - i] = num
-    if(len(operators) < 5):
-        print(len(operators), end= " ")
-    for op in operators[::-1]:
-        # Ansatz unitary in operators
-        
     
+
+    for op in operators[::-1]:
         if isinstance(op, str):    
             if op not in ("U", "Ud"):
                 raise ValueError(f"Unknown str operator, expected ('U', 'Ud') got {op}")
@@ -532,15 +529,15 @@ def propagate_state_SA_c(
             else:
                 op_folded = op
             
-            if(len(op_folded.operators) < 5):
-                print(op_folded.operators , end= " ")
-            else:
-                print("len more than 5", end=" ")
+            # if(len(op_folded.operators) < 5):
+            #     print(op_folded.operators , end= " ")
+            # else:
+            #     print("len more than 5", end=" ")
             # loop over all strings of annihilation operators in FermionicOperator sum
             tmp_state= fops.op_loop(op_folded.operators,num_active_orbs,parity_check,idx2det,
             dict(det2idx),do_unsafe,new_state)
             new_state = np.copy(tmp_state)
-    print()
+    #print()
     return new_state
 
 
@@ -649,7 +646,8 @@ def propagate_state_SA_p(
 
 
 
-propagate_state_SA = propagate_state_SA_c
+#propagate_state_SA = propagate_state_SA_c
+propagate_state_SA = fops.test_SA
 
 def expectation_value(
     bra: np.ndarray,
@@ -757,6 +755,10 @@ def expectation_vector_SA(
         Expectation value.
     """
     # build state vector of operator on ket
+    print(wf_struct)
+    print(thetas)
+    print(ket)
+    fops.test_SA(operators, ket, ci_info, thetas , wf_struct, do_folding)
     op_ket = propagate_state_SA(
         operators,
         ket,

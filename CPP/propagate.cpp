@@ -261,17 +261,59 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
   return tmp_state;
 }
 
-typedef struct {
-  det2idx idx2det num_active_elec_alpha num_active_elec_beta num_active_orbs
-      num_inactive_orbs num_virtual_orbs space_extension_offset
-} CI_Info;
+class CI_Info {
+public:
+  int num_active_elec_alpha; 
+  int num_active_elec_beta ;
+  int num_active_orbs;
+  int num_inactive_orbs; 
+  int num_virtual_orbs ;
+  int space_extension_offset;
+  std::map<uint64_t, uint64_t> det2idx;
+  std::vector<uint64_t> idx2det;
 
-Eigen::MatrixXd
-py_propagate_state_SA(const py::dict py_ops, const int num_active_orbs,
-                      const py::array_t<uint64_t> py_parity_check,
-                      const py::array_t<uint64_t> py_idx2det,
-                      const py::dict py_det2idx, const bool do_unsafe,
-                      const py::EigenDRef<Eigen::MatrixXd> py_state) {}
+  CI_Info(py::object py_ci_info){
+    det2idx = py_ci_info.attr("det2idx").cast<std::map<uint64_t, uint64_t>>();
+    idx2det = py_ci_info.attr("idx2det").cast<std::vector<uint64_t>>();
+    num_active_elec_alpha = py_ci_info.attr("num_active_elec_alpha").cast<int>();
+    num_active_elec_beta = py_ci_info.attr("num_active_elec_beta").cast<int>();
+    num_active_orbs = py_ci_info.attr("num_active_orbs").cast<int>();
+    num_inactive_orbs = py_ci_info.attr("num_inactive_orbs").cast<int>();
+    num_virtual_orbs = py_ci_info.attr("num_virtual_orbs").cast<int>();
+    space_extension_offset = py_ci_info.attr("space_extension_offset").cast<int>();
+  } 
+};
+
+
+Eigen::MatrixXd py_propagate_state_SA(py::list py_ops, const py::EigenDRef<Eigen::MatrixXd> state, const py::object &py_ci_info, const py::array_t<double> py_thetas, const py::object py_wf_struct, py::bool_ py_do_folding) {
+  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+  CI_Info ci_info(py_ci_info);
+  return tmp_state;
+}
+
+
+Eigen::MatrixXd test_SA(py::list py_ops, const py::EigenDRef<Eigen::MatrixXd> state, const py::object& py_ci_info , const py::list py_thetas , const py::object py_wf_struc , py::bool_ py_do_folding){
+  std::cout<<"************************"<<std::endl;
+  for(size_t i = 0; i < py_ops.size(); i++){
+    py::object op = py_ops[i];
+    std::cout<<op<<std::endl;
+  }
+  CI_Info ci_info(py_ci_info);
+  std::cout<<state<<std::endl;
+  std::cout<<ci_info.num_active_orbs<<std::endl;
+  std::cout<<ci_info.num_active_elec_alpha<<std::endl;
+  std::cout<<ci_info.num_active_elec_beta<<std::endl;
+  std::cout<<ci_info.num_inactive_orbs<<std::endl;
+  std::cout<<ci_info.num_virtual_orbs<<std::endl;
+  std::cout<<ci_info.space_extension_offset<<std::endl; 
+  std::cout<<"************************"<<std::endl;
+  auto thetas = py_thetas.cast<std::vector<double>>();
+  for(size_t i = 0; i < thetas.size(); i++){
+    std::cout<<"theta: "<<i<<" = "<<thetas[i]<<std::endl;
+  }
+  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols()); 
+  return tmp_state; 
+}
 
 // py::array_t<double> py_propagate_state(const py::list& operators,
 //                                       const py::array_t<double>& py_state,
@@ -395,6 +437,31 @@ PYBIND11_MODULE(fermionic_ops, m) {
         )doc",
         py::return_value_policy::move);
   m.def("t1", &t1);
+  m.def("propagate_state_SA_cpp", &py_propagate_state_SA,
+        R"doc(
+        Apply a sum of fermionic operator strings to a CI state vector.
+
+        Parameters
+        ----------
+        operators : list
+            List of fermionic operators to apply.
+        ci_info : dict
+            Information about the CI space.
+        thetas : dict
+            Thetas for the UCC operators.
+        wf_struct : dict
+            Structure of the wave function.
+        do_folding : bool
+            Whether to fold the operators.
+        do_unsafe : bool
+            Whether to use unsafe mode.
+
+        Returns
+        -------
+        np.ndarray[float64]
+            Output CI coefficient vector after applying all operators.
+        )doc");
+  m.def("test_SA", &test_SA,py::arg("operators"),py::arg("ci_coeffs"),py::arg("ci_info"),py::arg("thetas"),py::arg("wf_struct"),py::arg("do_folding"), "good",py::return_value_policy::move);
 }
 
 #endif // PYBIND11_BUILD
