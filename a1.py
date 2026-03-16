@@ -213,12 +213,12 @@ ikl2 = [
 WF = WaveFunctionSAADAPT(
 #WF = WaveFunctionUPS(
     mol.nelec[0] + mol.nelec[1],
-    (2, 2),
+    (4, 4),
     mf.mo_coeff,
     mol.intor("int1e_kin") + mol.intor("int1e_nuc"),
     mol.intor("int2e"),
     (
-        lc,ld),
+        c,d),
     "ADAPT",
     target_spin =  0,
     unpaired_electron = 0,

@@ -647,6 +647,7 @@ def propagate_state_SA_p(
 
 
 #propagate_state_SA = propagate_state_SA_c
+#propagate_state_SA = propagate_state_SA_p
 propagate_state_SA = fops.propagate_state_SA_cpp
 
 def expectation_value(

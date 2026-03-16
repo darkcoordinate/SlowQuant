@@ -410,7 +410,7 @@ Eigen::MatrixXd py_propagate_state_SA(
     const py::object &py_ci_info, const py::array_t<double> py_thetas,
     const py::object &py_wf_struct, py::bool_ py_do_folding) {
   CI_Info ci_info(py_ci_info);
-  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+  Eigen::MatrixXd state_ = state;
   std::vector<uint64_t> parity_check(2 * ci_info.num_active_orbs + 1);
   uint64_t num = 0;
   for (int i = 2 * ci_info.num_active_orbs - 1; i >= 0; i--) {
@@ -419,6 +419,9 @@ Eigen::MatrixXd py_propagate_state_SA(
   }
 
   for (int i = py_ops.size(); i > 0; i--) {
+    // Eigen::MatrixXd tmp_state =
+    //     Eigen::MatrixXd::Zero(state.rows(), state.cols());
+
     auto a = py_ops[i - 1]
                  .attr("operators")
                  .cast<std::map<std::vector<std::tuple<int, bool>>, double>>();
@@ -429,12 +432,13 @@ Eigen::MatrixXd py_propagate_state_SA(
                                   ci_info.num_active_orbs,
                                   ci_info.num_virtual_orbs);
     }
-    Eigen::MatrixXd state_ = state;
-    tmp_state = opLoop(c1, ci_info.num_active_orbs, parity_check,
-                       ci_info.idx2det, ci_info.det2idx, false, state_);
+
+    auto tmp_state = opLoop(c1, ci_info.num_active_orbs, parity_check,
+                            ci_info.idx2det, ci_info.det2idx, false, state_);
+    state_ = tmp_state;
   }
 
-  return tmp_state;
+  return state_;
 }
 
 Eigen::MatrixXd test_SA(py::list py_ops,
