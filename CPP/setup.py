@@ -57,6 +57,7 @@ ext = Extension(
     include_dirs=[
         pybind11.get_include(),               # pybind11 headers
         *extra_include,
+        "fermionic_operator.hpp"
     ],
     library_dirs=extra_libdirs,
     libraries=extra_libs,

@@ -29,6 +29,7 @@ from slowquant.unitary_coupled_cluster.operator_state_algebra import (
     get_grad_action_SA,
     #get_grad_for_excitation,
     propagate_state_SA,
+    propagate_state_SA_p,
     propagate_unitary_SA,
     
 )
@@ -493,7 +494,7 @@ class WaveFunctionSAADAPT:
             self.g_mo,
             self.num_inactive_orbs,
             self.num_active_orbs,
-        ) + self.facSpin*Spin
+        ) # + self.facSpin*Spin
         
         
         grad = []
@@ -519,18 +520,28 @@ class WaveFunctionSAADAPT:
             #print("************************")
             print(self.thetas)
             print(self.ci_coeffs)
-            lg = fops.test_SA([T,Hamiltonian], self.ci_coeffs, self.ci_info, self.thetas , None, False)
+            hm = Hamiltonian.get_folded_operator(self.ci_info.num_inactive_orbs,
+                                                 self.ci_info.num_active_orbs,
+                                                 self.ci_info.num_virtual_orbs)
+            #hm = Hamiltonian
+            for i in hm.operators.keys():
+                print(i, end = " ")
+                print(hm.operators[i])
+            lg = propagate_state_SA([T,Hamiltonian], self.ci_coeffs, self.ci_info, self.thetas , self.ups_layout, False)
             print(lg)
+            l2g = propagate_state_SA_p([T,Hamiltonian], self.ci_coeffs, self.ci_info, self.thetas , self.ups_layout, False)
+            print(l2g)
             if(self.state_specific):
                 gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,None)[self.specific_state,self.specific_state]
+                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+                
                 gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,None)[self.specific_state,self.specific_state]
+                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
             else:
                 gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,None)
+                                   self.ci_info, self.thetas,self.ups_layout)
                 gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,None)
+                                   self.ci_info, self.thetas,self.ups_layout)
             grad.append(gr)      
         return grad
             

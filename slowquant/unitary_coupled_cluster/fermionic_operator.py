@@ -464,6 +464,7 @@ class FermionicOperator:
                     ket_flip_fac *= -1
             fac *= ket_flip_fac
             new_key = tuple(active_op)
+            #print(new_key)
             if new_key in operators.keys():
                 operators[new_key] += fac * self.operators[op_key]
             else:

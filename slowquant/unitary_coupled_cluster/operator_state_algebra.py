@@ -647,7 +647,7 @@ def propagate_state_SA_p(
 
 
 #propagate_state_SA = propagate_state_SA_c
-propagate_state_SA = fops.test_SA
+propagate_state_SA = fops.propagate_state_SA_cpp
 
 def expectation_value(
     bra: np.ndarray,
@@ -755,10 +755,10 @@ def expectation_vector_SA(
         Expectation value.
     """
     # build state vector of operator on ket
-    print(wf_struct)
-    print(thetas)
-    print(ket)
-    fops.test_SA(operators, ket, ci_info, thetas , wf_struct, do_folding)
+    #print(wf_struct)
+    #print(thetas)
+    #print(ket)
+    #fops.test_SA(operators, ket, ci_info, thetas , wf_struct, do_folding)
     op_ket = propagate_state_SA(
         operators,
         ket,

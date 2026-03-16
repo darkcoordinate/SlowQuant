@@ -24,46 +24,33 @@ struct OperatorStringCompare {
 
 class FermionicOperator {
 public:
-  std::map<OperatorString, double> operators;
+  std::map<std::vector<std::tuple<int, bool>>, double> operators;
   FermionicOperator() = default;
-  explicit FermionicOperator(const OperatorString &ops, const double fac) {
-    if (std::abs(fac) > 1e-14) {
-      operators.insert({ops, fac});
-    }
+  explicit FermionicOperator(const std::vector<std::tuple<int, bool>> &ops,
+                             const double fac) {
+    operators.insert({ops, fac});
   }
 
-  explicit FermionicOperator(const std::map<OperatorString, double> &ops) {
-    for (const auto &item : ops) {
-      if (std::abs(item.second) > 1e-14) {
-        operators.insert(item);
-      }
-    }
-  }
-
-  const std::map<OperatorString, double> &get_operators() const {
-    return operators;
+  explicit FermionicOperator(
+      const std::map<std::vector<std::tuple<int, bool>>, double> &ops) {
+    operators = ops;
   }
 
   FermionicOperator operator+(const FermionicOperator &other) const {
+
     FermionicOperator result;
     result.operators = operators;
-    for (auto it = other.operators.begin(); it != other.operators.end(); ++it) {
-      const auto &ops = it->first;
-      const auto fac = it->second;
-      result.operators[ops] += fac;
-      if (std::abs(result.operators[ops]) < 1e-14)
-        result.operators.erase(ops);
+    for (const auto &[ops, fac] : other.operators) {
+      auto it = result.operators.find(ops);
+      if (it != result.operators.end()) {
+        result.operators[ops] += fac;
+        if (std::abs(result.operators[ops]) < 1e-14)
+          result.operators.erase(ops);
+      } else {
+        result.operators[ops] = fac;
+      }
     }
     return result;
-  }
-
-  FermionicOperator &operator+=(const FermionicOperator &other) {
-    for (const auto &[ops, fac] : other.operators) {
-      operators[ops] += fac;
-      if (std::abs(operators[ops]) < 1e-14)
-        operators.erase(ops);
-    }
-    return *this;
   }
 
   FermionicOperator operator-(const FermionicOperator &other) const {
@@ -99,43 +86,26 @@ public:
     return result;
   }
 
-  FermionicOperator &operator*=(double factor) {
-    if (std::abs(factor) < 1e-14) {
-      operators.clear();
-      return *this;
-    }
-    auto it = operators.begin();
-    while (it != operators.end()) {
-      it->second *= factor;
-      if (std::abs(it->second) < 1e-14) {
-        it = operators.erase(it);
-      } else {
-        ++it;
-      }
-    }
-    return *this;
-  }
-
-  FermionicOperator operator-() const { return (*this) * -1.0; }
-
-  bool operator==(const FermionicOperator &other) const {
-    return operators == other.operators;
-  }
-
-  bool operator!=(const FermionicOperator &other) const {
-    return !(*this == other);
-  }
-
+  // Multiply two FermionicOperator objects by performing normal ordering on the
+  // product of their operator strings.
   FermionicOperator operator*(const FermionicOperator &other) const {
     FermionicOperator result;
+    // Iterate over each operator string in the left operand.
     for (const auto &[ops_left, fac_left] : this->operators) {
+      // Iterate over each operator string in the right operand.
       for (const auto &[ops_right, fac_right] : other.operators) {
-        OperatorString combined = ops_left;
+        // Concatenate the operator vectors (left followed by right).
+        std::vector<std::tuple<int, bool>> combined = ops_left;
         combined.insert(combined.end(), ops_right.begin(), ops_right.end());
-        FermionicOperator temp(combined, fac_left * fac_right);
+        // Create a temporary FermionicOperator for this combined string with
+        // the product of coefficients.
+        FermionicOperator temp({combined}, fac_left * fac_right);
+        // Perform extended normal ordering on the combined operator.
         FermionicOperator ordered = do_extended_normal_ordering(temp);
+        // Merge the resulting ordered terms into the result.
         for (const auto &[new_ops, new_fac] : ordered.operators) {
           result.operators[new_ops] += new_fac;
+          // Remove near-zero coefficients to keep the representation clean.
           if (std::abs(result.operators[new_ops]) < 1e-14) {
             result.operators.erase(new_ops);
           }
@@ -145,83 +115,10 @@ public:
     return result;
   }
 
-  FermionicOperator &operator*=(const FermionicOperator &other) {
-    *this = (*this) * other;
-    return *this;
-  }
-
-  FermionicOperator dagger() const {
-    FermionicOperator result;
-    for (auto it = operators.begin(); it != operators.end(); ++it) {
-      const auto &ops = it->first;
-      const auto fac = it->second;
-      OperatorString dag_ops = ops;
-      std::reverse(dag_ops.begin(), dag_ops.end());
-      for (auto &op : dag_ops) {
-        std::get<1>(op) = !std::get<1>(op);
-      }
-      result.operators[dag_ops] = fac;
-    }
-    return result;
-  }
-
-  std::map<std::string, double> operators_readable() const {
-    std::map<std::string, double> result;
-    for (const auto &[ops, fac] : operators) {
-      std::string s = "";
-      for (size_t i = 0; i < ops.size(); ++i) {
-        s += std::to_string(std::get<0>(ops[i]));
-        if (std::get<1>(ops[i]))
-          s += "^";
-        if (i < ops.size() - 1)
-          s += " ";
-      }
-      if (s.empty())
-        s = "I";
-      result[s] = fac;
-    }
-    return result;
-  }
-
-  std::map<int, int> operator_count() const {
-    std::map<int, int> counts;
-    for (const auto &[ops, fac] : operators) {
-      counts[ops.size()]++;
-    }
-    return counts;
-  }
-
-  std::tuple<std::vector<std::vector<int>>, std::vector<std::vector<int>>,
-             std::vector<double>>
-  get_info() const {
-    std::vector<std::vector<int>> annihilations;
-    std::vector<std::vector<int>> creations;
-    std::vector<double> coefficients;
-    for (const auto &[ops, fac] : operators) {
-      std::vector<int> anni, crea;
-      for (const auto &op : ops) {
-        if (std::get<1>(op))
-          crea.push_back(std::get<0>(op));
-        else
-          anni.push_back(std::get<0>(op));
-      }
-      annihilations.push_back(anni);
-      creations.push_back(crea);
-      coefficients.push_back(fac);
-    }
-    return {annihilations, creations, coefficients};
-  }
-
-  std::map<std::string, double> get_qiskit_form(int num_orbs) const {
-    // Placeholder for Jordan-Wigner or similar mapping.
-    // For now, return a simplified representation as expected by main.cpp.
-    return operators_readable();
-  }
-
   FermionicOperator get_folded_operator(const int num_inactive_orbs,
                                         const int num_active_orbs,
                                         const int num_virtual_orbs) {
-    std::map<OperatorString, double> folded_operators;
+    std::map<std::vector<std::tuple<int, bool>>, double> folded_operators;
     std::vector<int> inactive_idx;
     std::vector<int> active_idx;
     std::vector<int> virtual_idx;
@@ -238,12 +135,12 @@ public:
     }
 
     for (auto &[ops, fac_] : operators) {
-      OperatorString virtual_;
-      OperatorString virtual_dagger;
-      OperatorString inactive;
-      OperatorString inactive_dagger;
-      OperatorString active;
-      OperatorString active_dagger;
+      std::vector<int> virtual_;
+      std::vector<int> virtual_dagger;
+      std::vector<int> inactive;
+      std::vector<int> inactive_dagger;
+      std::vector<std::tuple<int, bool>> active;
+      std::vector<std::tuple<int, bool>> active_dagger;
       double fac = 1;
 
       for (auto anni : ops) {
@@ -252,28 +149,29 @@ public:
         if (dagger) {
           if (std::find(inactive_idx.begin(), inactive_idx.end(), idx) !=
               inactive_idx.end()) {
-            inactive_dagger.push_back(anni);
+            inactive_dagger.push_back(idx);
           } else if (std::find(active_idx.begin(), active_idx.end(), idx) !=
                      active_idx.end()) {
-            active_dagger.push_back(anni);
+            active_dagger.push_back({idx - 2 * num_inactive_orbs, dagger});
           } else {
-            virtual_dagger.push_back(anni);
+            virtual_dagger.push_back(idx);
           }
         } else {
           if (std::find(inactive_idx.begin(), inactive_idx.end(), idx) !=
               inactive_idx.end()) {
-            inactive.push_back(anni);
+            inactive.push_back(idx);
           } else if (std::find(active_idx.begin(), active_idx.end(), idx) !=
                      active_idx.end()) {
-            active.push_back(anni);
+            active.push_back({idx - 2 * num_inactive_orbs, dagger});
           } else {
-            virtual_.push_back(anni);
+            virtual_.push_back(idx);
           }
         }
       }
       if (virtual_.size() != 0 || virtual_dagger.size() != 0) {
         continue;
       }
+      // auto active_op = active_dagger + active;
       auto active_op = active_dagger;
       active_op.insert(active_op.end(), active.begin(), active.end());
       auto bra_side = inactive_dagger;
@@ -286,16 +184,18 @@ public:
         fac *= -1;
       }
       double ket_flip_fac = 1;
-      for (int i = 1; i < (int)ket_side.size() + 1; i++) {
+      for (int i = 1; i < ket_side.size() + 1; i++) {
         if (i % 2 == 0) {
           ket_flip_fac *= -1;
         }
       }
       fac *= ket_flip_fac;
       const auto new_key = active_op;
-      folded_operators[new_key] += fac * operators[ops];
-      if (std::abs(folded_operators[new_key]) < 1e-14) {
-        folded_operators.erase(new_key);
+      auto it = folded_operators.find(new_key);
+      if (it != folded_operators.end()) {
+        folded_operators[new_key] += fac * operators[ops];
+      } else {
+        folded_operators[new_key] = fac * operators[ops];
       }
     }
     return FermionicOperator(folded_operators);

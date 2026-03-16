@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <fmt/core.h>
 #include <iostream>
@@ -261,58 +262,205 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
   return tmp_state;
 }
 
+Eigen::MatrixXd opLoop(const FermionicOperator &ops, const int num_active_orbs,
+                       const std::vector<uint64_t> &parity_check,
+                       const std::vector<uint64_t> &idx2det,
+                       const std::map<uint64_t, uint64_t> &det2idx,
+                       const bool do_unsafe, const Eigen::MatrixXd &state) {
+  uint64_t det_lookup_size = idx2det.size();
+  int n_dets = idx2det.size();
+
+  std::vector<operators> operator2;
+  std::vector<operators> operator4;
+  std::vector<operators> operator6;
+  std::vector<operators> operator8;
+  for (auto item : ops.operators) {
+    auto label = item.first;
+    if (label.size() == 2) {
+      operators op;
+      op.factor = item.second;
+      for (py::size_t i = 0; i < label.size(); i++) {
+        auto py_op = label[i];
+        int orb = std::get<0>(py_op);
+        bool is_creation = std::get<1>(py_op);
+        if (is_creation)
+          op.creator.push_back(orb);
+        else
+          op.annihilator.push_back(orb);
+      }
+      op.len = 2;
+      operator2.push_back(op);
+    } else if (label.size() == 4) {
+      operators op;
+      op.factor = item.second;
+      for (py::size_t i = 0; i < label.size(); i++) {
+        auto py_op = label[i];
+        int orb = std::get<0>(py_op);
+        bool is_creation = std::get<1>(py_op);
+        if (is_creation)
+          op.creator.push_back(orb);
+        else
+          op.annihilator.push_back(orb);
+      }
+      op.len = 4;
+      operator4.push_back(op);
+    }
+
+    else if (label.size() == 6) {
+      operators op;
+      op.factor = item.second;
+      for (py::size_t i = 0; i < label.size(); i++) {
+        auto py_op = label[i];
+        int orb = std::get<0>(py_op);
+        bool is_creation = std::get<1>(py_op);
+        if (is_creation)
+          op.creator.push_back(orb);
+        else
+          op.annihilator.push_back(orb);
+      }
+      op.len = 6;
+
+      operator6.push_back(op);
+    } else if (label.size() == 8) {
+      operators op;
+      op.factor = item.second;
+      for (py::size_t i = 0; i < label.size(); i++) {
+        auto py_op = label[i];
+        int orb = std::get<0>(py_op);
+        bool is_creation = std::get<1>(py_op);
+        if (is_creation)
+          op.creator.push_back(orb);
+        else
+          op.annihilator.push_back(orb);
+      }
+      op.len = 8;
+      operator8.push_back(op);
+    } else {
+      operators op;
+      op.factor = item.second;
+      op.len = 0;
+      operator2.push_back(op);
+    }
+  }
+  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+  std::vector<Eigen::MatrixXd> tmp_stateV(operator2.size() + operator4.size() +
+                                          operator6.size() + operator8.size());
+  // std::cout << state.format(OctaveFmt) << std::endl;
+
+#pragma omp parallel for
+  for (size_t i = 0; i < operator2.size(); i++) {
+    tmp_stateV[i] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator2[i], num_active_orbs, parity_check);
+  }
+#pragma omp parallel for
+  for (size_t i = 0; i < operator4.size(); i++) {
+    tmp_stateV[i + operator2.size()] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator4[i], num_active_orbs, parity_check);
+  }
+
+#pragma omp parallel for
+  for (size_t i = 0; i < operator6.size(); i++) {
+    tmp_stateV[i + operator2.size() + operator4.size()] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator6[i], num_active_orbs, parity_check);
+  }
+#pragma omp parallel for
+  for (size_t i = 0; i < operator8.size(); i++) {
+    tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()] =
+        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator8[i], num_active_orbs, parity_check);
+  }
+
+  for (size_t i = 0; i < tmp_stateV.size(); i++) {
+
+    tmp_state += tmp_stateV[i];
+  }
+
+  return tmp_state;
+}
+
 class CI_Info {
 public:
-  int num_active_elec_alpha; 
-  int num_active_elec_beta ;
+  int num_active_elec_alpha;
+  int num_active_elec_beta;
   int num_active_orbs;
-  int num_inactive_orbs; 
-  int num_virtual_orbs ;
+  int num_inactive_orbs;
+  int num_virtual_orbs;
   int space_extension_offset;
   std::map<uint64_t, uint64_t> det2idx;
   std::vector<uint64_t> idx2det;
-
-  CI_Info(py::object py_ci_info){
+  CI_Info(py::object py_ci_info) {
     det2idx = py_ci_info.attr("det2idx").cast<std::map<uint64_t, uint64_t>>();
     idx2det = py_ci_info.attr("idx2det").cast<std::vector<uint64_t>>();
-    num_active_elec_alpha = py_ci_info.attr("num_active_elec_alpha").cast<int>();
+    num_active_elec_alpha =
+        py_ci_info.attr("num_active_elec_alpha").cast<int>();
     num_active_elec_beta = py_ci_info.attr("num_active_elec_beta").cast<int>();
     num_active_orbs = py_ci_info.attr("num_active_orbs").cast<int>();
     num_inactive_orbs = py_ci_info.attr("num_inactive_orbs").cast<int>();
     num_virtual_orbs = py_ci_info.attr("num_virtual_orbs").cast<int>();
-    space_extension_offset = py_ci_info.attr("space_extension_offset").cast<int>();
-  } 
+    space_extension_offset =
+        py_ci_info.attr("space_extension_offset").cast<int>();
+  }
 };
 
-
-Eigen::MatrixXd py_propagate_state_SA(py::list py_ops, const py::EigenDRef<Eigen::MatrixXd> state, const py::object &py_ci_info, const py::array_t<double> py_thetas, const py::object py_wf_struct, py::bool_ py_do_folding) {
-  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+Eigen::MatrixXd py_propagate_state_SA(
+    py::list py_ops, const py::EigenDRef<Eigen::MatrixXd> state,
+    const py::object &py_ci_info, const py::array_t<double> py_thetas,
+    const py::object &py_wf_struct, py::bool_ py_do_folding) {
   CI_Info ci_info(py_ci_info);
+  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+  std::vector<uint64_t> parity_check(2 * ci_info.num_active_orbs + 1);
+  uint64_t num = 0;
+  for (int i = 2 * ci_info.num_active_orbs - 1; i >= 0; i--) {
+    num += 1 << i;
+    parity_check[2 * ci_info.num_active_orbs - i] = num;
+  }
+
+  for (int i = py_ops.size(); i > 0; i--) {
+    auto a = py_ops[i - 1]
+                 .attr("operators")
+                 .cast<std::map<std::vector<std::tuple<int, bool>>, double>>();
+    FermionicOperator c1(a);
+
+    if (py_do_folding) {
+      c1 = c1.get_folded_operator(ci_info.num_inactive_orbs,
+                                  ci_info.num_active_orbs,
+                                  ci_info.num_virtual_orbs);
+    }
+    Eigen::MatrixXd state_ = state;
+    tmp_state = opLoop(c1, ci_info.num_active_orbs, parity_check,
+                       ci_info.idx2det, ci_info.det2idx, false, state_);
+  }
+
   return tmp_state;
 }
 
-
-Eigen::MatrixXd test_SA(py::list py_ops, const py::EigenDRef<Eigen::MatrixXd> state, const py::object& py_ci_info , const py::list py_thetas , const py::object py_wf_struc , py::bool_ py_do_folding){
-  std::cout<<"************************"<<std::endl;
-  for(size_t i = 0; i < py_ops.size(); i++){
+Eigen::MatrixXd test_SA(py::list py_ops,
+                        const py::EigenDRef<Eigen::MatrixXd> state,
+                        const py::object &py_ci_info, const py::list py_thetas,
+                        const py::object py_wf_struc, py::bool_ py_do_folding) {
+  std::cout << "************************" << std::endl;
+  for (size_t i = 0; i < py_ops.size(); i++) {
     py::object op = py_ops[i];
-    std::cout<<op<<std::endl;
+    std::cout << op << std::endl;
   }
   CI_Info ci_info(py_ci_info);
-  std::cout<<state<<std::endl;
-  std::cout<<ci_info.num_active_orbs<<std::endl;
-  std::cout<<ci_info.num_active_elec_alpha<<std::endl;
-  std::cout<<ci_info.num_active_elec_beta<<std::endl;
-  std::cout<<ci_info.num_inactive_orbs<<std::endl;
-  std::cout<<ci_info.num_virtual_orbs<<std::endl;
-  std::cout<<ci_info.space_extension_offset<<std::endl; 
-  std::cout<<"************************"<<std::endl;
+  std::cout << state << std::endl;
+  std::cout << ci_info.num_active_orbs << std::endl;
+  std::cout << ci_info.num_active_elec_alpha << std::endl;
+  std::cout << ci_info.num_active_elec_beta << std::endl;
+  std::cout << ci_info.num_inactive_orbs << std::endl;
+  std::cout << ci_info.num_virtual_orbs << std::endl;
+  std::cout << ci_info.space_extension_offset << std::endl;
+  std::cout << "************************" << std::endl;
   auto thetas = py_thetas.cast<std::vector<double>>();
-  for(size_t i = 0; i < thetas.size(); i++){
-    std::cout<<"theta: "<<i<<" = "<<thetas[i]<<std::endl;
+  for (size_t i = 0; i < thetas.size(); i++) {
+    std::cout << "theta: " << i << " = " << thetas[i] << std::endl;
   }
-  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols()); 
-  return tmp_state; 
+  Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+  return tmp_state;
 }
 
 // py::array_t<double> py_propagate_state(const py::list& operators,
@@ -437,7 +585,9 @@ PYBIND11_MODULE(fermionic_ops, m) {
         )doc",
         py::return_value_policy::move);
   m.def("t1", &t1);
-  m.def("propagate_state_SA_cpp", &py_propagate_state_SA,
+  m.def("propagate_state_SA_cpp", &py_propagate_state_SA, py::arg("operators"),
+        py::arg("ci_coeffs"), py::arg("ci_info"), py::arg("thetas"),
+        py::arg("wf_struct"), py::arg("do_folding") = true,
         R"doc(
         Apply a sum of fermionic operator strings to a CI state vector.
 
@@ -461,7 +611,9 @@ PYBIND11_MODULE(fermionic_ops, m) {
         np.ndarray[float64]
             Output CI coefficient vector after applying all operators.
         )doc");
-  m.def("test_SA", &test_SA,py::arg("operators"),py::arg("ci_coeffs"),py::arg("ci_info"),py::arg("thetas"),py::arg("wf_struct"),py::arg("do_folding"), "good",py::return_value_policy::move);
+  m.def("test_SA", &test_SA, py::arg("operators"), py::arg("ci_coeffs"),
+        py::arg("ci_info"), py::arg("thetas"), py::arg("wf_struct"),
+        py::arg("do_folding"), "good", py::return_value_policy::move);
 }
 
 #endif // PYBIND11_BUILD
