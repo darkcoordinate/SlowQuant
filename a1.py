@@ -1,10 +1,10 @@
 # type: ignore
 import os
-os.environ["OMP_NUM_THREADS"] = "6" # export OMP_NUM_THREADS=4
-os.environ["OPENBLAS_NUM_THREADS"] = "6" # export OPENBLAS_NUM_THREADS=4 
-os.environ["MKL_NUM_THREADS"] = "6" # export MKL_NUM_THREADS=6
-os.environ["VECLIB_MAXIMUM_THREADS"] = "6" # export VECLIB_MAXIMUM_THREADS=4
-os.environ["NUMEXPR_NUM_THREADS"] = "6" # export NUMEXPR_NUM_THREADS=6
+os.environ["OMP_NUM_THREADS"] = "16" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "16" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "16" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "16" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "16" # export NUMEXPR_NUM_THREADS=6
 import sys
 
 
@@ -20,7 +20,7 @@ Since all states, are includes in the subspace expansion.
 """
 from pyscf import gto, scf ,mcscf
 import numpy as np
-np.set_printoptions(threshold=sys.maxsize,linewidth=100000,precision=2)
+np.set_printoptions(threshold=sys.maxsize,linewidth=100000,precision=4)
 atm= """
 C        0.0001201395   -0.0000565799   -0.0000000000;
 O        1.2796857221    0.0000273114    0.0000000000;
@@ -172,53 +172,53 @@ ikl = [
 
 
 ikl2 = [
-                ["00001111"],
-                ["00011011"],
-                ["00011110"],
-                ["01001011"],
-                ["01001110"],
-                ["01011010"],
-                ["00100111"],
-                ["00110011"],
-                ["00110110"],
-                ["01100011"],
-                ["01100110"],
-                ["01110010"],
-                ["00101101"],
-                ["00111001"],
-                ["00111100"],
-                ["01101001"],
-                ["01101100"],
-                ["01111000"],
-                ["10000111"],
-                ["10010011"],
-                ["10010110"],
-                ["11000011"],
-                ["11000110"],
-                ["11010010"],
-                ["10001101"],
-                ["10011001"],
-                ["10011100"],
-                ["11001001"],
-                ["11001100"],
-                ["11011000"],
-                ["10100101"],
-                ["10110001"],
-                ["10110100"],
-                ["11100001"],
-                ["11100100"],
-                ["11110000"],
+                ["110000111100"],
+                ["110001101100"],
+                ["110001111000"],
+                ["110100101100"],
+                ["110100111000"],
+                ["110101101000"],
+                ["110010011100"],
+                ["110011001100"],
+                ["110011011000"],
+                ["110110001100"],
+                ["110110011000"],
+                ["110111001000"],
+                ["110010110100"],
+                ["110011100100"],
+                ["110011110000"],
+                ["110110100100"],
+                ["110110110000"],
+                ["110111100000"],
+                ["111000011100"],
+                ["111001001100"],
+                ["111001011000"],
+                ["111100001100"],
+                ["111100011000"],
+                ["111101001000"],
+                ["111000110100"],
+                ["111001100100"],
+                ["111001110000"],
+                ["111100100100"],
+                ["111100110000"],
+                ["111101100000"],
+                ["111010010100"],
+                ["111011000100"],
+                ["111011010000"],
+                ["111110000100"],
+                ["111110010000"],
+                ["111111000000"],
             ]
 
 WF = WaveFunctionSAADAPT(
 #WF = WaveFunctionUPS(
     mol.nelec[0] + mol.nelec[1],
-    (4, 4),
+    (6, 6),
     mf.mo_coeff,
     mol.intor("int1e_kin") + mol.intor("int1e_nuc"),
     mol.intor("int2e"),
     (
-        c,d),
+        c,ikl2),
     "ADAPT",
     target_spin =  0,
     unpaired_electron = 0,
@@ -230,7 +230,7 @@ print(len(ikl))
 
 
 
-WF.do_adapt(orbital_opt=False, epoch=1e-5, optimiser_algo="l-bfgs-b")
+WF.do_adapt(orbital_opt=False, epoch=1e-6, optimiser_algo="l-bfgs-b")
 #print(WF.ci_coeffs)
 
 

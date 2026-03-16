@@ -20,8 +20,13 @@ namespace py = pybind11;
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+
 
 #include "fermionic_operator.hpp"
+//#include "operators.hpp"
 int t1(const py::dict py_ops) {
 
   auto i = py_ops.cast<std::map<std::vector<std::tuple<int, bool>>, double>>();
@@ -347,26 +352,26 @@ Eigen::MatrixXd opLoop(const FermionicOperator &ops, const int num_active_orbs,
                                           operator6.size() + operator8.size());
   // std::cout << state.format(OctaveFmt) << std::endl;
 
-#pragma omp parallel for
+//#pragma omp parallel for
   for (size_t i = 0; i < operator2.size(); i++) {
     tmp_stateV[i] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator2[i], num_active_orbs, parity_check);
   }
-#pragma omp parallel for
+//#pragma omp parallel for
   for (size_t i = 0; i < operator4.size(); i++) {
     tmp_stateV[i + operator2.size()] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator4[i], num_active_orbs, parity_check);
   }
 
-#pragma omp parallel for
+//#pragma omp parallel for
   for (size_t i = 0; i < operator6.size(); i++) {
     tmp_stateV[i + operator2.size() + operator4.size()] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator6[i], num_active_orbs, parity_check);
   }
-#pragma omp parallel for
+//#pragma omp parallel for
   for (size_t i = 0; i < operator8.size(); i++) {
     tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()] =
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
@@ -440,6 +445,105 @@ Eigen::MatrixXd py_propagate_state_SA(
 
   return state_;
 }
+
+
+
+Eigen::MatrixXd propagate_state_SA(
+    std::vector<FermionicOperator> py_ops, const Eigen::MatrixXd state,
+    const CI_Info &py_ci_info, const std::vector<double> py_thetas,
+    const py::object &py_wf_struct, bool py_do_folding) {
+  CI_Info ci_info(py_ci_info);
+  Eigen::MatrixXd state_ = state;
+  std::vector<uint64_t> parity_check(2 * ci_info.num_active_orbs + 1);
+  uint64_t num = 0;
+  for (int i = 2 * ci_info.num_active_orbs - 1; i >= 0; i--) {
+    num += 1 << i;
+    parity_check[2 * ci_info.num_active_orbs - i] = num;
+  }
+
+  for (int i = py_ops.size(); i > 0; i--) {
+    // Eigen::MatrixXd tmp_state =
+    //     Eigen::MatrixXd::Zero(state.rows(), state.cols());
+
+    auto a = py_ops[i - 1];
+    FermionicOperator c1(a);
+
+    if (py_do_folding) {
+      c1 = c1.get_folded_operator(ci_info.num_inactive_orbs,
+                                  ci_info.num_active_orbs,
+                                  ci_info.num_virtual_orbs);
+    }
+
+    auto tmp_state = opLoop(c1, ci_info.num_active_orbs, parity_check,
+                            ci_info.idx2det, ci_info.det2idx, false, state_);
+    state_ = tmp_state;
+  }
+
+  return state_;
+}
+
+
+Eigen::MatrixXd expectation_vector_SA_py(py::EigenDRef<Eigen::MatrixXd> bra, const py::list& py_ops, py::EigenDRef<Eigen::MatrixXd> ket, const CI_Info& ci_info , const py::array_t<double> &py_thetas,
+    const py::object &py_wf_struct, py::bool_ py_do_folding ) {
+      std::vector<FermionicOperator> ops;
+      for (size_t i = 0; i < py_ops.size(); i++) {
+        ops.push_back(FermionicOperator(py_ops[i].attr("operators").cast<std::map<std::vector<std::tuple<int, bool>>, double>>()));
+      }
+      auto op_ket = propagate_state_SA(ops, ket, ci_info, py_thetas.cast<std::vector<double>>(), py_wf_struct, py_do_folding);
+      return bra * op_ket.transpose();
+}
+
+
+Eigen::MatrixXd expectation_vector_SA(const Eigen::MatrixXd bra, const std::vector<FermionicOperator> ops, const Eigen::MatrixXd ket, const CI_Info& ci_info , const std::vector<double> &thetas,
+    const py::object &py_wf_struct, bool py_do_folding ) {
+      auto op_ket = propagate_state_SA(ops, ket, ci_info, thetas, py_wf_struct, py_do_folding);
+      return bra * op_ket.transpose();
+}
+
+py::array_t<double> derivative_theta_ket(py::EigenDRef<Eigen::MatrixXd> bra, const py::list& py_ops, const py::list& py_ops2, py::EigenDRef<Eigen::MatrixXd> ket, const py::object& py_ci_info , const py::array_t<double> &py_thetas,
+    const py::object &py_wf_struct, py::bool_ py_do_folding, py::int_ specific_state ) {
+
+      //py::gil_scoped_release release;
+      std::vector<FermionicOperator> ops;
+      std::vector<FermionicOperator> ops2;
+      std::vector<double> gr_list(py_ops.size());
+      int specific_state_ = specific_state.cast<int>();
+      std::vector<double> thetas = py_thetas.cast<std::vector<double>>(); 
+      CI_Info ci_info(py_ci_info);
+      std::cout << "************************ :" ;
+      std::cout << py_ops.size() << std::endl;
+      // auto start = std::chrono::steady_clock::now();
+
+      std::vector<FermionicOperator> T_list;
+      for (size_t i = 0; i < py_ops.size(); i++) {
+        T_list.push_back(FermionicOperator(py_ops[i].attr("operators").cast<std::map<std::vector<std::tuple<int, bool>>, double>>()));
+      }
+      FermionicOperator Hamiltonian(py_ops2[0].attr("operators").cast<std::map<std::vector<std::tuple<int, bool>>, double>>());
+      bool do_folding = py_do_folding.cast<bool>();
+      std::ofstream MyFile("filename.txt");
+      
+      #pragma omp parallel for ordered 
+      for (size_t i = 0; i < py_ops.size(); i++) {
+          int tid = omp_get_thread_num();
+          double gr = 0;
+          
+          //MyFile <<" "<<i<<" " << "\n";
+          gr = expectation_vector_SA(bra, {T_list[i],Hamiltonian}, ket, ci_info, thetas, py_wf_struct, do_folding)(specific_state_, specific_state_);
+          gr -= expectation_vector_SA(bra, {Hamiltonian,T_list[i]}, ket, ci_info, thetas, py_wf_struct, do_folding)(specific_state_, specific_state_);
+          gr_list[i] = gr;
+        //  std::cout <<"thread :"<< tid <<" step :"<<i<<" "<<gr<<std::endl ;
+        // auto end = std::chrono::steady_clock::now();
+        // auto diff = end - start;
+        // std::cout << " time :" ;
+        // std::cout << std::chrono::duration_cast<std::chrono::nanoseconds>(diff).count() << std::endl;
+        // start = end;
+      }
+      MyFile.close();
+      return py::cast(gr_list);
+}
+
+
+
 
 Eigen::MatrixXd test_SA(py::list py_ops,
                         const py::EigenDRef<Eigen::MatrixXd> state,
@@ -618,6 +722,9 @@ PYBIND11_MODULE(fermionic_ops, m) {
   m.def("test_SA", &test_SA, py::arg("operators"), py::arg("ci_coeffs"),
         py::arg("ci_info"), py::arg("thetas"), py::arg("wf_struct"),
         py::arg("do_folding"), "good", py::return_value_policy::move);
+  m.def("derivative_theta_ket", &derivative_theta_ket,py::arg("bra"), py::arg("op1"),py::arg("op2"), py::arg("ket"),
+        py::arg("ci_info"), py::arg("thetas"), py::arg("wf_struct"),
+        py::arg("do_folding")=true, py::arg("specific_state"), "good", py::return_value_policy::move);
 }
 
 #endif // PYBIND11_BUILD

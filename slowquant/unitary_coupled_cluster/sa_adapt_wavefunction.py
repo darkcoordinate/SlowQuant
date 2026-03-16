@@ -342,7 +342,7 @@ class WaveFunctionSAADAPT:
         
 
     
-    def do_adapt(self, maxiter=200, epoch=1e-6 , orbital_opt: bool = False, optimiser_algo="CG", skip_optimisation=0):
+    def do_adapt(self, maxiter=50, epoch=1e-6 , orbital_opt: bool = False, optimiser_algo="CG", skip_optimisation=0):
         
         
         
@@ -500,7 +500,8 @@ class WaveFunctionSAADAPT:
         grad = []
         #print("Number of excitation operators: ",len(self.excitation_pool_type))
         #print("operator Index      Time Taken")
-        #Tm = time.time()
+        Tm = time.time()
+        Tap = []
         for i in range(len(self.excitation_pool_type)):
         #for i in range(len(self.T_operators_type)):
             #Ti = time.time()
@@ -515,24 +516,35 @@ class WaveFunctionSAADAPT:
             elif self.excitation_pool_type[i] == "double":
                 (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
                 T = G2(mi, mj, ma, mb, True)
+            Tap.append(T)
             #print(T.operators)
             #fops.t1(T.operators)
             #print("************************")
+            #print(self.state_specific)
+            # if(self.state_specific):
+            #    gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+            #                       self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+               
+            #    gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+            #                       self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+            # else:
+            #    gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+            #                       self.ci_info, self.thetas,self.ups_layout)
+            #    gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+            #                     self.ci_info, self.thetas,self.ups_layout)
+            # grad.append(gr)  
+        
+        grad2 = fops.derivative_theta_ket(self.ci_coeffs,Tap, [Hamiltonian],  self.ci_coeffs,
+                               self.ci_info, self.thetas,self.ups_layout, do_folding=True , specific_state=int(self.specific_state))
 
-            if(self.state_specific):
-                gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
-                
-                gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
-            else:
-                gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)
-                gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                   self.ci_info, self.thetas,self.ups_layout)
-            grad.append(gr)  
+        #for i in range(len(grad)):
+        #    print(f" {i} ::{self.state_specific} {self.specific_state}  {grad[i]} - {grad2[i]} = {grad[i] - grad2[i]}")
+
+        #exit()
+
+            
         print(grad)    
-        return grad
+        return grad2
             
         
     @property

@@ -61,8 +61,8 @@ ext = Extension(
     ],
     library_dirs=extra_libdirs,
     libraries=extra_libs,
-    extra_compile_args=['-fopenmp'],
-    extra_link_args=['-fopenmp'],
+    extra_compile_args=["-O3",'-fopenmp'],
+    extra_link_args=["-O3",'-fopenmp'],
     language="c++",
 )
 
