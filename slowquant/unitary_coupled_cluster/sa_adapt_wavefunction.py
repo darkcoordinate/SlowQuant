@@ -358,6 +358,7 @@ class WaveFunctionSAADAPT:
         grad = None
         nloop = 0
         skip_optimisation_counter = 0
+        self.E_old_adapt = 0
         for i in range(maxiter):
             grad = self.calculate_derivative_of_operator_pool()
             #exit()
@@ -466,6 +467,16 @@ class WaveFunctionSAADAPT:
             print("SS energies : Digonal Elements of the matrix = ")
             for mi in EC.diagonal():
                 print(mi,end=" ")
+            
+            print("Energy of the specific state = ", EC.diagonal()[self.specific_state])
+            E_val = self.sa_energy
+            print("Value of the Expectation Value (With Spin Penalty) = ", E_val )
+            E_adapt_val = abs(E_val - self.E_old_adapt)
+            print("Delta E_adapt = ", E_adapt_val)
+            self.E_old_adapt = E_val 
+            if(E_adapt_val < 1e-7):
+                print("Energy is good enough")
+                break
             print()
             print("Find the minimum energy you like")
             print()
@@ -1277,6 +1288,7 @@ class WaveFunctionSAADAPT:
             self._old_opt_parameters = np.copy(parameters)
             return np.array(energies)
         E=0
+    
         if(self.state_specific):
             E = expectation_vector_SA(
                 self.ci_coeffs,

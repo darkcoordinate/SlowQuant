@@ -4,9 +4,14 @@ from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
 from rich.console import Console
-
+import sys
+import math as mt
 LOGFILE = "filename.txt"
-NSTEPS = 850
+
+
+NSTEPS = int(sys.argv[1])
+
+col = int(mt.sqrt(NSTEPS)) + 1
 
 console = Console()
 
@@ -33,7 +38,7 @@ def make_grid():
     """Create a grid of step boxes."""
     table = Table(show_header=False)
 
-    cols = 20
+    cols = col
     for _ in range(cols):
         table.add_column(justify="center")
 
@@ -46,9 +51,9 @@ def make_grid():
                 continue
 
             if steps_done[idx]:
-                row.append(f"[black on green]{idx:3d}[/]")
+                row.append(f"[black on green]{idx:04d}[/]")
             else:
-                row.append(f"[white on red]{idx:3d}[/]")
+                row.append(f"[white on red]{idx:04d}[/]")
         table.add_row(*row)
 
     return Panel(table, title="Step Progress")
