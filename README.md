@@ -42,7 +42,7 @@ Just use [PySCF](https://github.com/pyscf/pyscf) instead.
 
 ## C++ Assistance
 
-If you have learned the concepts of quantum chemistry using **SlowQuant** and verified that the implementation works correctly, you may notice that the current Python implementation can be slow for larger problems. To improve performance, parts of the codebase can be implemented in **C++** using **OpenMP** for parallelism and **pybind11** for Python bindings.
+If you have learned the concepts of quantum chemistry using **SlowQuant** and verified that the implementation works correctly, you may notice that the current Python implementation can be slow for larger molecules and active space in ADAPT-VQE. To improve performance, parts of the codebase can be implemented in **C++** using **OpenMP** for parallelism and **pybind11** for Python bindings.
 
 This branch provides a C++ implementation that integrates with Python while taking advantage of faster compiled code.
 
