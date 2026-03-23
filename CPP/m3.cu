@@ -47,6 +47,7 @@ __global__ void matrixMul6x6Optimized(Eigen::Matrix<float, 6, 6>* output,
     }
 }
 
+
 // Helper function to print a 6x6 matrix
 void printMatrix(const Eigen::Matrix<float, 6, 6>& mat, const std::string& name) {
     std::cout << name << ":" << std::endl;
