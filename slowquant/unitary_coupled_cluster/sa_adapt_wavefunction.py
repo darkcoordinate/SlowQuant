@@ -56,7 +56,7 @@ from slowquant.unitary_coupled_cluster.util import UpsStructure
 from slowquant.unitary_coupled_cluster.util import *
 
 
-import fermionic_ops as fops
+import CUDA.build.fermionic_ops_cuda as fops
 
 class WaveFunctionSAADAPT:
     def __init__(
@@ -513,6 +513,7 @@ class WaveFunctionSAADAPT:
         #print("operator Index      Time Taken")
         Tm = time.time()
         Tap = []
+        print(len(self.excitation_pool_type))
         for i in range(len(self.excitation_pool_type)):
         #for i in range(len(self.T_operators_type)):
             #Ti = time.time()
@@ -527,23 +528,24 @@ class WaveFunctionSAADAPT:
             elif self.excitation_pool_type[i] == "double":
                 (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
                 T = G2(mi, mj, ma, mb, True)
-            Tap.append(T)
+            #Tap.append(T)
             #print(T.operators)
             #fops.t1(T.operators)
             #print("************************")
             #print(self.state_specific)
-            # if(self.state_specific):
-            #    gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-            #                       self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
-               
-            #    gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-            #                       self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
-            # else:
-            #    gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-            #                       self.ci_info, self.thetas,self.ups_layout)
-            #    gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-            #                     self.ci_info, self.thetas,self.ups_layout)
-            # grad.append(gr)  
+            if(self.state_specific):
+               gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+                                  self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+             
+               gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+                                  self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+            else:
+               gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+                                  self.ci_info, self.thetas,self.ups_layout)
+               gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+                                self.ci_info, self.thetas,self.ups_layout)
+            grad.append(gr) 
+            print(i) 
         
         grad2 = fops.derivative_theta_ket(self.ci_coeffs,Tap, [Hamiltonian],  self.ci_coeffs,
                                self.ci_info, self.thetas,self.ups_layout, do_folding=True , specific_state=int(self.specific_state))

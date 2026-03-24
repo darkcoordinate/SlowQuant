@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
-project(QuantumSolver LANGUAGES CXX CUDA)
+project(fermionic_ops_cuda LANGUAGES CXX CUDA)
 
 # 1. Find Dependencies
+find_package(Python COMPONENTS Interpreter Development)
+find_package(pybind11 CONFIG)
 find_package(pybind11 REQUIRED)
 find_package(Eigen3 REQUIRED)
 
@@ -14,16 +16,16 @@ set(CMAKE_C_COMPILER "nvcc")
 # 2. Define the Python Module
 # The module name (solver_accel) must match the PYBIND11_MODULE name in C++
 
-pybind11_add_module(solver_accel src/kernels.cu)
+pybind11_add_module(fermionic_ops_cuda src/prop.cu)
 
 # 3. Link Libraries
-target_link_libraries(solver_accel PRIVATE 
+target_link_libraries(fermionic_ops_cuda PRIVATE 
     Eigen3::Eigen 
     pybind11::module
 )
 
 # 4. CUDA Specifics (Important for your kernels)
-set_target_properties(solver_accel PROPERTIES
+set_target_properties(fermionic_ops_cuda PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     CXX_STANDARD 17
 )

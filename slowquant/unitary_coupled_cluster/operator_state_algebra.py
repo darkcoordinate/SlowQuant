@@ -19,7 +19,8 @@ from slowquant.unitary_coupled_cluster.operators import (
 )
 from slowquant.unitary_coupled_cluster.util import UccStructure, UpsStructure
 import random
-import fermionic_ops as fops
+#import fermionic_ops as fops
+import CUDA.build.fermionic_ops_cuda as fops
 
 
 @nb.jit(nopython=True)
@@ -646,9 +647,9 @@ def propagate_state_SA_p(
 
 
 
-#propagate_state_SA = propagate_state_SA_c
+propagate_state_SA = propagate_state_SA_c
 #propagate_state_SA = propagate_state_SA_p
-propagate_state_SA = fops.propagate_state_SA_cpp
+#propagate_state_SA = fops.propagate_state_SA_cpp
 
 def expectation_value(
     bra: np.ndarray,

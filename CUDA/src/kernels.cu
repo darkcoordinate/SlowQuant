@@ -23,7 +23,7 @@ void launch_vector_add(const float* a, const float* b, float* c, int n) {
 
     int threadsPerBlock = 256;
     int blocksPerGrid = (n + threadsPerBlock - 1) / threadsPerBlock;
-    vectorAddKernel<<<blocksPerGrid, threadsPerBlock>>>(d_data, d_b, d_c, n);
+    vectorAddKernel<<<blocksPerGrid, threadsPerBlock>>>(d_a, d_b, d_c, n);
 
     cudaMemcpy(c, d_c, size, cudaMemcpyDeviceToHost);
 
