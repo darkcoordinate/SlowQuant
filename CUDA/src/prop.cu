@@ -1,3 +1,5 @@
+
+#define EIGEN_USE_GPU 1
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +12,7 @@
 #include <vector>
 #define PYBIND11_BUILD
 #ifdef PYBIND11_BUILD
+#include <Eigen/Core>
 #include <Eigen/Dense>
 #include <pybind11/eigen.h>
 #include <pybind11/numpy.h>
@@ -52,16 +55,18 @@ typedef struct {
   }
 } operators;
 
-__device__ __host__ Eigen::MatrixXd apply_operator_SA_c(const Eigen::MatrixXd &state,
+__device__ __host__  void apply_operator_SA_c(const Eigen::MatrixXd &state,
                                     const std::vector<uint64_t> &idx2det,
                                     const std::map<uint64_t, uint64_t> &det2idx,
                                     const uint64_t det_lookup_size,
                                     const int n_dets, const operators &ops,
                                     const int num_active_orbs,
-                                    const std::vector<uint64_t> &parity_check) {
+                                    const std::vector<uint64_t> &parity_check,
+                                  Eigen::MatrixXd &tmp_state2
+                                  ) {
 
-  Eigen::MatrixXd tmp_state2 =
-      Eigen::MatrixXd::Zero(state.rows(), state.cols());
+  //Eigen::MatrixXd tmp_state2 =
+  //    Eigen::MatrixXd::Zero(state.rows(), state.cols());
   for (int i = 0; i < n_dets; ++i) {
     bool is_non_zero = (state.col(i).array().abs() > 1e-14).any();
     if (!is_non_zero)
@@ -103,65 +108,25 @@ __device__ __host__ Eigen::MatrixXd apply_operator_SA_c(const Eigen::MatrixXd &s
     double sign = (phase_changes % 2 == 0) ? 1.0 : -1.0;
     tmp_state2.col(new_idx) += ops.factor * sign * state.col(i);
   }
-  return tmp_state2;
 }
 
 
-
-
-__global__ void apply_operator_SA_c(const Eigen::MatrixXd &state,
+__global__ void loop(
+  //const Eigen::MatrixXd &state,
+  const double* state,
                                     const std::vector<uint64_t> &idx2det,
                                     const std::map<uint64_t, uint64_t> &det2idx,
                                     const uint64_t det_lookup_size,
-                                    const int n_dets, const operators &ops,
+                                    const int n_dets, const operators* ops,
                                     const int num_active_orbs,
-                                    const std::vector<uint64_t> &parity_check , Eigen::MatrixXd &tmp_state2) {
+                                    const std::vector<uint64_t> &parity_check,
+                                    Eigen::MatrixXd* tmp_stateV
+                                  ){
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-  //Eigen::MatrixXd tmp_state2 = Eigen::MatrixXd::Zero(state.rows(), state.cols());
-  for (int i = 0; i < n_dets; ++i) {
-    bool is_non_zero = (state.col(i).array().abs() > 1e-14).any();
-    if (!is_non_zero)
-      continue;
-    uint64_t det = idx2det[i];
-    int phase_changes = 0;
-    int killstate = 0;
-
-    /* ---- Apply annihilation operators ---- */
-    for (int a = static_cast<int>(ops.annihilator.size()) - 1; a >= 0; --a) {
-      int orb_idx = ops.annihilator[a];
-      int shift = 2 * num_active_orbs - 1 - orb_idx;
-      uint64_t mask = 1ULL << shift;
-      if (((det >> shift) & 1) == 0) {
-        killstate = 1;
-        break;
-      }
-      det ^= mask;
-      phase_changes += bitcount(det & parity_check[orb_idx]);
-    }
-    if (killstate)
-      continue;
-
-    /* ---- Apply creation operators ---- */
-    for (int a = static_cast<int>(ops.creator.size()) - 1; a >= 0; --a) {
-      int orb_idx = ops.creator[a];
-      int shift = 2 * num_active_orbs - 1 - orb_idx;
-      uint64_t mask = 1ULL << shift;
-      if (((det >> shift) & 1) == 1) {
-        killstate = 1;
-        break;
-      }
-      det ^= mask;
-      phase_changes += bitcount(det & parity_check[orb_idx]);
-    }
-    if (killstate)
-      continue;
-    int new_idx = det2idx.at(static_cast<int>(det));
-    double sign = (phase_changes % 2 == 0) ? 1.0 : -1.0;
-    tmp_state2.col(new_idx) += ops.factor * sign * state.col(i);
-  }
-  return tmp_state2;
+  apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            ops[idx], num_active_orbs, parity_check,tmp_stateV[idx]);
 }
-
 
 
 Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
@@ -255,30 +220,41 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
                                           operator6.size() + operator8.size());
   // std::cout << state.format(OctaveFmt) << std::endl;
 
+  // Launch kernel
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (operator2.size() + threadsPerBlock - 1) / threadsPerBlock;
+    
+
+    //const size_t matsize = sizeof(state);
+    int rows = (int)state.rows();
+    int cols = (int)state.cols();
+    double* state_device;
+    size_t matsize = rows * cols * sizeof(double);
+    cudaError_t err = cudaMalloc(&state_device, matsize);
+    cudaMemcpy(state_device, state.data(), matsize, cudaMemcpyHostToDevice);
+
+    loop<<<blocksPerGrid, threadsPerBlock>>>(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator2.data(), num_active_orbs, parity_check,tmp_stateV.data());
 #pragma omp parallel for
   for (size_t i = 0; i < operator2.size(); i++) {
-    tmp_stateV[i] =
-        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
-                            operator2[i], num_active_orbs, parity_check);
+    apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator2[i], num_active_orbs, parity_check,tmp_stateV[i]);
   }
 #pragma omp parallel for
   for (size_t i = 0; i < operator4.size(); i++) {
-    tmp_stateV[i + operator2.size()] =
-        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
-                            operator4[i], num_active_orbs, parity_check);
+    apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator4[i], num_active_orbs, parity_check,tmp_stateV[i + operator2.size()]);
   }
 
 #pragma omp parallel for
   for (size_t i = 0; i < operator6.size(); i++) {
-    tmp_stateV[i + operator2.size() + operator4.size()] =
-        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
-                            operator6[i], num_active_orbs, parity_check);
+    apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator6[i], num_active_orbs, parity_check,tmp_stateV[i + operator2.size() + operator4.size()]);
   }
 #pragma omp parallel for
   for (size_t i = 0; i < operator8.size(); i++) {
-    tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()] =
-        apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
-                            operator8[i], num_active_orbs, parity_check);
+    apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                            operator8[i], num_active_orbs, parity_check,tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()]);
   }
 
   for (size_t i = 0; i < tmp_stateV.size(); i++) {

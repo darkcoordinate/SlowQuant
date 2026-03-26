@@ -5,6 +5,7 @@ project(fermionic_ops_cuda LANGUAGES CXX CUDA)
 find_package(Python COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG)
 find_package(pybind11 REQUIRED)
+
 find_package(Eigen3 REQUIRED)
 
 set(CMAKE_CUDA_ARCHITECTURES 86)
@@ -16,7 +17,7 @@ set(CMAKE_C_COMPILER "nvcc")
 # 2. Define the Python Module
 # The module name (solver_accel) must match the PYBIND11_MODULE name in C++
 
-pybind11_add_module(fermionic_ops_cuda src/prop.cu)
+pybind11_add_module(fermionic_ops_cuda  src/m4.cu src/prop.cu)
 
 # 3. Link Libraries
 target_link_libraries(fermionic_ops_cuda PRIVATE 

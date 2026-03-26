@@ -155,6 +155,9 @@ int main() {
     std::cout << "Copying results back to CPU..." << std::endl;
     cudaMemcpy(h_C, d_C, totalSize, cudaMemcpyDeviceToHost);
     
+
+
+    
     // Verify first result with CPU computation
     std::cout << "\nVerifying results..." << std::endl;
     Eigen::Matrix<float, 6, 6> cpu_result = h_A[0] * h_B[0];
