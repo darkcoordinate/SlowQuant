@@ -35,24 +35,30 @@ __device__ __host__ static inline int bitcount(uint64_t x) {
 #endif
 }
 
+#define MAX_OP_LEN 10
+
 
 typedef struct {
-  std::vector<int> creator;
-  std::vector<int> annihilator;
+  int creator[MAX_OP_LEN];
+  int annihilator[MAX_OP_LEN];
   double factor;
-  int len;
+  int len_c;
+  int len_a;
 
   void print() const {
     std::cout << "Creator ";
-    for (size_t i = 0; i < creator.size(); i++) {
+    for (size_t i = 0; i < len_c; i++) {
       std::cout << creator[i] << " ";
     }
     std::cout << "Annhilator ";
-    for (size_t i = 0; i < annihilator.size(); i++) {
+    for (size_t i = 0; i < len_a; i++) {
       std::cout << annihilator[i] << " ";
     }
     std::cout << factor << " \n";
   }
+
+  __host__ __device__
+  operators() : len_c(0), len_a(0), factor(0.0) {}
 } operators;
 
 __device__ __host__  void apply_operator_SA_c(const Eigen::MatrixXd &state,
@@ -135,13 +141,6 @@ struct DictEntry {
     int value;
 };
 
-struct operators{
-  int* creator;
-  int* annihilator;
-  int len;
-  double factor;
-};
-
 class CudaDictionary {
 public:
     DictEntry* d_table;
@@ -218,7 +217,7 @@ __device__ int search_dict(DictEntry* table, unsigned int key, int capacity) {
 }
 
 
-__global__ void loop1(double* state, double* tmp_stateV, int rows, int cols , int num_ops,
+__global__ void loop1(double* state, double* tmp_stateV, int rows, int cols , int num_ops, operators* cu_operator, 
 uint64_t* idx2det, int size_idx2det, CudaDictionary det2idx, int size_det2idx
 ){
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -259,11 +258,10 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
         int orb = py_op[0].cast<int>();
         bool is_creation = py_op[1].cast<bool>();
         if (is_creation)
-          op.creator.push_back(orb);
+          op.creator[op.len_c++] = orb;
         else
-          op.annihilator.push_back(orb);
+          op.annihilator[op.len_a++] = orb;
       }
-      op.len = 2;
       operator2.push_back(op);
     } else if (py_label.size() == 4) {
       operators op;
@@ -273,11 +271,10 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
         int orb = py_op[0].cast<int>();
         bool is_creation = py_op[1].cast<bool>();
         if (is_creation)
-          op.creator.push_back(orb);
+          op.creator[op.len_c++] = orb;
         else
-          op.annihilator.push_back(orb);
+          op.annihilator[op.len_a++] = orb;
       }
-      op.len = 4;
       operator4.push_back(op);
     }
 
@@ -289,11 +286,10 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
         int orb = py_op[0].cast<int>();
         bool is_creation = py_op[1].cast<bool>();
         if (is_creation)
-          op.creator.push_back(orb);
+          op.creator[op.len_c++] = orb;
         else
-          op.annihilator.push_back(orb);
+          op.annihilator[op.len_a++] = orb;
       }
-      op.len = 6;
 
       operator6.push_back(op);
     } else if (py_label.size() == 8) {
@@ -304,11 +300,10 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
         int orb = py_op[0].cast<int>();
         bool is_creation = py_op[1].cast<bool>();
         if (is_creation)
-          op.creator.push_back(orb);
+          op.creator[op.len_c++] = orb;
         else
-          op.annihilator.push_back(orb);
+          op.annihilator[op.len_a++] = orb;
       }
-      op.len = 8;
       operator8.push_back(op);
     } else {
       operators op;
@@ -341,6 +336,18 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
 
     double* tmp_stateV_device;
     uint64_t* cu_idx2det;
+    operators* cu_operator2;
+    operators* cu_operator4;
+    operators* cu_operator6;
+    operators* cu_operator8;
+    cudaMalloc(&cu_operator2,operator2.size()*sizeof(operators));
+    cudaMalloc(&cu_operator4,operator4.size()*sizeof(operators));
+    cudaMalloc(&cu_operator6,operator6.size()*sizeof(operators));
+    cudaMalloc(&cu_operator8,operator8.size()*sizeof(operators));
+    cudaMemcpy(cu_operator2,operator2.data(),operator2.size()*sizeof(operators),cudaMemcpyHostToDevice);
+    cudaMemcpy(cu_operator4,operator4.data(),operator4.size()*sizeof(operators),cudaMemcpyHostToDevice);
+    cudaMemcpy(cu_operator6,operator6.data(),operator6.size()*sizeof(operators),cudaMemcpyHostToDevice);
+    cudaMemcpy(cu_operator8,operator8.data(),operator8.size()*sizeof(operators),cudaMemcpyHostToDevice);
     //uint64_t* cu_det2idx;
     // std::cout << "Kernel launched1 " << tmp_stateV.size() <<" "<< (operator2.size() + operator4.size() +
     //                                       operator6.size() + operator8.size())<<" "<<matsize<< std::endl;
