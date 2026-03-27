@@ -111,23 +111,33 @@ __device__ __host__  void apply_operator_SA_c(const Eigen::MatrixXd &state,
 }
 
 
-__global__ void loop(
-  //const Eigen::MatrixXd &state,
-  const double* state,
-                                    const std::vector<uint64_t> &idx2det,
-                                    const std::map<uint64_t, uint64_t> &det2idx,
-                                    const uint64_t det_lookup_size,
-                                    const int n_dets, const operators* ops,
-                                    const int num_active_orbs,
-                                    const std::vector<uint64_t> &parity_check,
-                                    Eigen::MatrixXd* tmp_stateV
-                                  ){
+// __global__ void loop(const Eigen::Matrix<double,Dynamic,> &state,
+//                                     // const std::vector<uint64_t> &idx2det,
+//                                     // const std::map<uint64_t, uint64_t> &det2idx,
+//                                     // const uint64_t det_lookup_size,
+//                                     // const int n_dets, const operators* ops,
+//                                     // const int num_active_orbs,
+//                                     // const std::vector<uint64_t> &parity_check,
+//                                     // double ** tmp_stateV,
+//                                     // int rows, int cols
+//                                   ){
+//   int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+//   //Eigen::MatrixXd state_d = Eigen::Map<const Eigen::MatrixXd>(state, rows, cols);
+//   // Eigen::MatrixXd tmp_stateV_d = Eigen::Map<Eigen::MatrixXd>(tmp_stateV[idx], rows, cols);
+//   // apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+//   //                           ops[idx], num_active_orbs, parity_check,tmp_stateV_d);
+// }
+
+
+__global__ void loop1(double* state, double* tmp_stateV, int rows, int cols , int num_ops){
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-  apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
-                            ops[idx], num_active_orbs, parity_check,tmp_stateV[idx]);
+  Eigen::MatrixXd state_d = Eigen::Map<Eigen::MatrixXd>(state, rows, cols);
+  if(idx < num_ops){
+    Eigen::MatrixXd tmp_stateV_d = Eigen::Map<Eigen::MatrixXd>(tmp_stateV + (idx * rows * cols), rows, cols);
+    tmp_stateV_d = state_d.array() + (double)idx;
+  }
 }
-
 
 Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
                           const py::array_t<uint64_t> py_parity_check,
@@ -226,15 +236,37 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
     
 
     //const size_t matsize = sizeof(state);
-    int rows = (int)state.rows();
-    int cols = (int)state.cols();
+    const int rows = (int)state.rows();
+    const int cols = (int)state.cols();
+    std::cout << "rows " << state.rows() << " cols " << state.cols() << std::endl;
     double* state_device;
     size_t matsize = rows * cols * sizeof(double);
-    cudaError_t err = cudaMalloc(&state_device, matsize);
+    cudaMalloc(&state_device,matsize);
     cudaMemcpy(state_device, state.data(), matsize, cudaMemcpyHostToDevice);
 
-    loop<<<blocksPerGrid, threadsPerBlock>>>(state, idx2det, det2idx, det_lookup_size, n_dets,
-                            operator2.data(), num_active_orbs, parity_check,tmp_stateV.data());
+
+    double* tmp_stateV_device;
+    // std::cout << "Kernel launched1 " << tmp_stateV.size() <<" "<< (operator2.size() + operator4.size() +
+    //                                       operator6.size() + operator8.size())<<" "<<matsize<< std::endl;
+    cudaMalloc(&tmp_stateV_device,matsize*operator2.size());
+    loop1<<<blocksPerGrid, threadsPerBlock>>>(state_device, tmp_stateV_device, rows, cols, operator2.size());
+     std::cout << "Kernel launched" << std::endl;
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(state.data(), state_device, matsize, cudaMemcpyDeviceToHost);
+    
+    // size_t tmp_stateV_size = tmp_stateV.size();
+    // cudaMalloc(&tmp_stateV_device, operator2.size()*matsize);  
+    // std::cout << "Kernel launched 2 " <<sizeof(state)<<" "<<state.size()<< std::endl;
+    // cudaMemcpy(state_device, state.data(), matsize, cudaMemcpyHostToDevice);
+    // for (size_t i = 0; i < operator2.size(); i++) {
+    //   cudaMemcpy(tmp_stateV_device[i], tmp_stateV[i].data(), matsize, cudaMemcpyHostToDevice);
+    //   std::cout << "Kernel launched3 "<< i<< std::endl;
+    // }
+    // std::cout << "Kernel launched1" << std::endl;
+    // loop<<<blocksPerGrid, threadsPerBlock>>>(state_device, idx2det, det2idx, det_lookup_size, n_dets,
+    //                         operator2.data(), num_active_orbs, parity_check,tmp_stateV_device, rows, cols);
+    std::cout << "Kernel launched" << std::endl;
 #pragma omp parallel for
   for (size_t i = 0; i < operator2.size(); i++) {
     apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
