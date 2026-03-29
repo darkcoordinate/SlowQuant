@@ -1,4 +1,5 @@
 
+#include <tuple>
 #define EIGEN_USE_GPU 1
 #include <cassert>
 #include <cstddef>
@@ -38,12 +39,13 @@ __device__ __host__ static inline int bitcount(uint64_t x) {
 #define MAX_OP_LEN 10
 
 
-typedef struct {
+struct operators {
   int creator[MAX_OP_LEN];
   int annihilator[MAX_OP_LEN];
   double factor;
   int len_c;
   int len_a;
+  int len;
 
   void print() const {
     std::cout << "Creator ";
@@ -57,9 +59,25 @@ typedef struct {
     std::cout << factor << " \n";
   }
 
-  __host__ __device__
-  operators() : len_c(0), len_a(0), factor(0.0) {}
-} operators;
+  void print_c() const{
+    printf("Creator ");
+    for (size_t i = 0; i < len_c; i++) {
+      printf("%d ", creator[i]);
+    }
+    printf("Annhilator ");
+    for (size_t i = 0; i < len_a; i++) {
+      printf("%d ", annihilator[i]);
+    }
+    printf("%f \n", factor);
+  }
+
+  __host__ __device__ operators(){
+    len_c = 0;
+    len_a = 0;
+    factor = 0.0;
+    len = 0;
+  }
+} ;
 
 __device__ __host__  void apply_operator_SA_c(const Eigen::MatrixXd &state,
                                     const std::vector<uint64_t> &idx2det,
@@ -82,7 +100,8 @@ __device__ __host__  void apply_operator_SA_c(const Eigen::MatrixXd &state,
     int killstate = 0;
 
     /* ---- Apply annihilation operators ---- */
-    for (int a = static_cast<int>(ops.annihilator.size()) - 1; a >= 0; --a) {
+
+    for (int a = static_cast<int>(ops.len_a) - 1; a >= 0; --a) {
       int orb_idx = ops.annihilator[a];
       int shift = 2 * num_active_orbs - 1 - orb_idx;
       uint64_t mask = 1ULL << shift;
@@ -97,7 +116,7 @@ __device__ __host__  void apply_operator_SA_c(const Eigen::MatrixXd &state,
       continue;
 
     /* ---- Apply creation operators ---- */
-    for (int a = static_cast<int>(ops.creator.size()) - 1; a >= 0; --a) {
+    for (int a = static_cast<int>(ops.len_c) - 1; a >= 0; --a) {
       int orb_idx = ops.creator[a];
       int shift = 2 * num_active_orbs - 1 - orb_idx;
       uint64_t mask = 1ULL << shift;
@@ -216,16 +235,159 @@ __device__ int search_dict(DictEntry* table, unsigned int key, int capacity) {
     return -1; // Not found
 }
 
+__device__ bool  get_col_non_zero(double* state, int col_idx, int rows, int cols) {
 
-__global__ void loop1(double* state, double* tmp_stateV, int rows, int cols , int num_ops, operators* cu_operator, 
-uint64_t* idx2det, int size_idx2det, CudaDictionary det2idx, int size_det2idx
+    for (int i = 0; i < rows; ++i) {
+        if (state[rows*col_idx + i] > 1e-14) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+__device__ void  assign_col(double* tmp_stateV  , int col_idx, int rows, int cols) {
+
+    for (int i = 0; i < rows; ++i) {
+        tmp_stateV[rows*col_idx + i] = 2.0;
+    }
+}
+
+
+__device__ void add_col(double * tmp_state, double* state,int new_idx, int col_idx, int rows, int cols, double factor) {
+    for (int i = 0; i < rows; ++i) {
+        tmp_state[rows*new_idx + i] += state[rows*col_idx + i] * factor;
+    }
+}
+
+
+__global__ void loop1(double* state, double* tmp_stateV, int rows, int cols , uint64_t num_ops, operators* ops, int n_dets,
+uint64_t* idx2det, uint64_t size_idx2det, CudaDictionary det2idx, int size_det2idx, int num_active_orbs, uint64_t* parity_check
 ){
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  for(int i = 0; i < size_idx2det; i++){
+  for (int i = 0; i < n_dets; ++i) {
+    //bool is_non_zero = (state.col(i).array().abs() > 1e-14).any();
+    bool is_non_zero = get_col_non_zero(state, i, rows, cols);
+    if (!is_non_zero)
+      continue;
     uint64_t det = idx2det[i];
-    int det_idx = search_dict(det2idx.d_table, det, size_det2idx); 
-    
+    int phase_changes = 0;
+    int killstate = 0;
+
+    /* ---- Apply annihilation operators ---- */
+    for (int a = ops[idx].len_a - 1; a >= 0; --a) {
+      int orb_idx = ops[idx].annihilator[a];
+      int shift = 2 * num_active_orbs - 1 - orb_idx;
+      uint64_t mask = 1ULL << shift;
+      if (((det >> shift) & 1) == 0) {
+        killstate = 1;
+        break;
+      }
+      det ^= mask;
+      phase_changes += bitcount(det & parity_check[orb_idx]);
+    }
+    if (killstate)
+      continue;
+
+    /* ---- Apply creation operators ---- */
+    for (int a = ops[idx].len_c - 1; a >= 0; --a) {
+      int orb_idx = ops[idx].creator[a];
+      int shift = 2 * num_active_orbs - 1 - orb_idx;
+      uint64_t mask = 1ULL << shift;
+      if (((det >> shift) & 1) == 1) {
+        killstate = 1;
+        break;
+      }
+      det ^= mask;
+      phase_changes += bitcount(det & parity_check[orb_idx]);
+    }
+    if (killstate)
+      continue;
+    //int new_idx = det2idx.at(static_cast<int>(det));
+    int new_idx = search_dict(det2idx.d_table, det, det2idx.capacity);
+    double sign = (phase_changes % 2 == 0) ? 1.0 : -1.0;
+    //tmp_state2.col(new_idx) += ops[idx].factor * sign * state.col(i);
+    add_col(tmp_stateV + idx * rows * cols, state, new_idx, i, rows, cols, ops[idx].factor * sign);
   }
+}
+
+
+void loop_test(const Eigen::MatrixXd &state,
+                                    const std::vector<uint64_t> &idx2det,
+                                    const std::map<uint64_t, uint64_t> &det2idx,
+                                    const uint64_t det_lookup_size,
+                                    const int n_dets, const operators &ops,
+                                    const int num_active_orbs,
+                                    const std::vector<uint64_t> &parity_check,
+                                  Eigen::MatrixXd &tmp_state2
+                                  ){
+                                    tmp_state2.col(2).array() += 2.0;
+                                  }
+
+
+__global__ void loop2(double* state, double* tmp_stateV, int rows, int cols , uint64_t num_ops, operators* ops, int n_dets,
+uint64_t* idx2det, uint64_t size_idx2det, CudaDictionary det2idx, int size_det2idx, int num_active_orbs, uint64_t* parity_check
+){
+//assign_col(tmp_stateV + idx * rows * cols, 2, rows, cols);
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if(idx < num_ops){
+  for (int i = 0; i < n_dets; ++i) {
+    //bool is_non_zero = (state.col(i).array().abs() > 1e-14).any();
+    //printf("%d %lu %d %d thread %d \n",i, idx2det[i] , ops[idx].len_a, ops[idx].len_c, idx);
+    bool is_non_zero = get_col_non_zero(state, i, rows, cols);
+    if (!is_non_zero)
+      continue;
+    
+    uint64_t det = idx2det[i];
+    
+    int phase_changes = 0;
+    int killstate = 0;
+
+    /* ---- Apply annihilation operators ---- */
+    for (int a = ops[idx].len_a - 1; a >= 0; --a) {
+      int orb_idx = ops[idx].annihilator[a];
+      //printf("%d %d thread %d ",i, orb_idx , idx);
+      int shift = 2 * num_active_orbs - 1 - orb_idx;
+      uint64_t mask = 1ULL << shift;
+      if (((det >> shift) & 1) == 0) {
+        killstate = 1;
+        break;
+      }
+      det ^= mask;
+      phase_changes += bitcount(det & parity_check[orb_idx]);
+    }
+    //printf("\n");
+    if (killstate)
+      continue;
+    
+    /* ---- Apply creation operators ---- */
+    for (int a = ops[idx].len_c - 1; a >= 0; --a) {
+      int orb_idx = ops[idx].creator[a];
+      //printf("%d %d thread %d ",i, orb_idx , idx);
+      int shift = 2 * num_active_orbs - 1 - orb_idx;
+      uint64_t mask = 1ULL << shift;
+      if (((det >> shift) & 1) == 1) {
+        killstate = 1;
+        break;
+      }
+      det ^= mask;
+      phase_changes += bitcount(det & parity_check[orb_idx]);
+    }
+    if (killstate)
+      continue;
+    
+    //printf("capacity %d \n",det2idx.capacity);
+    int new_idx = search_dict(det2idx.d_table, det, det2idx.capacity);
+    double sign = (phase_changes % 2 == 0) ? 1.0 : -1.0;
+    //printf("new_idx %d\n",new_idx);
+    //printf("factor %4.5f \n",ops[idx].factor);
+    //p     rintf("sign %4.5f \n",sign);
+    //assign_col(tmp_stateV + idx * rows * cols, 2, rows, cols);
+    //add_col(tmp_stateV + idx * rows * cols, state, 2, 0, rows, cols, 2.0);  
+    add_col(tmp_stateV + idx * rows * cols, state, new_idx, i, rows, cols, ops[idx].factor * sign);
+
+  }
+}
 }
 
 Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
@@ -319,7 +481,7 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
   // std::cout << state.format(OctaveFmt) << std::endl;
 
   // Launch kernel
-    int threadsPerBlock = 256;
+    int threadsPerBlock = 20;
     int blocksPerGrid = (operator2.size() + threadsPerBlock - 1) / threadsPerBlock;
     std::cout<<"block size "<<blocksPerGrid<<" "<<operator2.size()<<std::endl;
 
@@ -330,59 +492,83 @@ Eigen::MatrixXd py_opLoop(const py::dict py_ops, const int num_active_orbs,
     double* state_device;
     size_t matsize = rows * cols * sizeof(double);
     size_t itc = rows*cols;
+    std::cout<<"state  \n"<<state<<std::endl;
     cudaMalloc(&state_device,matsize);
     cudaMemcpy(state_device, state.data(), matsize, cudaMemcpyHostToDevice);
 
 
     double* tmp_stateV_device;
+    double* tmp_stateV_device2;
     uint64_t* cu_idx2det;
+    uint64_t* cu_parity_check;
     operators* cu_operator2;
     operators* cu_operator4;
     operators* cu_operator6;
     operators* cu_operator8;
     cudaMalloc(&cu_operator2,operator2.size()*sizeof(operators));
     cudaMalloc(&cu_operator4,operator4.size()*sizeof(operators));
-    cudaMalloc(&cu_operator6,operator6.size()*sizeof(operators));
-    cudaMalloc(&cu_operator8,operator8.size()*sizeof(operators));
     cudaMemcpy(cu_operator2,operator2.data(),operator2.size()*sizeof(operators),cudaMemcpyHostToDevice);
     cudaMemcpy(cu_operator4,operator4.data(),operator4.size()*sizeof(operators),cudaMemcpyHostToDevice);
-    cudaMemcpy(cu_operator6,operator6.data(),operator6.size()*sizeof(operators),cudaMemcpyHostToDevice);
-    cudaMemcpy(cu_operator8,operator8.data(),operator8.size()*sizeof(operators),cudaMemcpyHostToDevice);
-    //uint64_t* cu_det2idx;
-    // std::cout << "Kernel launched1 " << tmp_stateV.size() <<" "<< (operator2.size() + operator4.size() +
-    //                                       operator6.size() + operator8.size())<<" "<<matsize<< std::endl;
-    cudaMalloc(&tmp_stateV_device,matsize*operator2.size());
+    cudaMalloc(&tmp_stateV_device,matsize*( operator2.size()));
+    cudaMalloc(&tmp_stateV_device2,matsize*( operator4.size()));
+    
     cudaMalloc(&cu_idx2det,idx2det.size()*sizeof(uint64_t));
+    cudaMalloc(&cu_parity_check,parity_check.size()*sizeof(int));
     cudaMemcpy(cu_idx2det,idx2det.data(),idx2det.size()*sizeof(uint64_t),cudaMemcpyHostToDevice);
-    loop1<<<blocksPerGrid, threadsPerBlock>>>(state_device, tmp_stateV_device, rows, cols, operator2.size(),cu_idx2det ,idx2det.size(),d_det2idx,det2idx.size());
-     std::cout << "Kernel launched2" << std::endl;
-    cudaDeviceSynchronize();
+    cudaMemcpy(cu_parity_check,parity_check.data(),parity_check.size()*sizeof(int),cudaMemcpyHostToDevice);
 
+    loop2<<<blocksPerGrid, threadsPerBlock>>>(state_device, tmp_stateV_device, rows, cols, (uint64_t)operator2.size(),cu_operator2, n_dets, cu_idx2det ,idx2det.size(),d_det2idx,det2idx.size(),num_active_orbs,cu_parity_check);
+   
+     loop2<<<blocksPerGrid, threadsPerBlock>>>(state_device, tmp_stateV_device2, rows, cols, (uint64_t)operator4.size(),cu_operator4, n_dets, cu_idx2det ,idx2det.size(),d_det2idx,det2idx.size(),num_active_orbs,cu_parity_check);
+   
+    std::cout << "Kernel launched2" << std::endl;
+    
     cudaMemcpy(state.data(), state_device, matsize, cudaMemcpyDeviceToHost);
   
     for(int i = 0; i < operator2.size(); i++){
       tmp_stateV[i] = Eigen::MatrixXd::Zero(state.rows(), state.cols());
       cudaMemcpy(tmp_stateV[i].data(), tmp_stateV_device + (i *itc ), matsize, cudaMemcpyDeviceToHost);
-      std::cout << "tmp_stateV[" << i << "] = " << tmp_stateV[i] << std::endl;
+      std::cout << "tmp_stateV[" << i << "] =\n " << tmp_stateV[i] << std::endl;
+    }
+
+    for(int i = 0; i < operator4.size(); i++){
+      tmp_stateV[i] = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+      cudaMemcpy(tmp_stateV[i].data(), tmp_stateV_device2 + (i *itc ), matsize, cudaMemcpyDeviceToHost);
+      std::cout << "tmp_stateV[" << i << "] =\n " << tmp_stateV[i] << std::endl;
     }
     
-    // size_t tmp_stateV_size = tmp_stateV.size();
-    // cudaMalloc(&tmp_stateV_device, operator2.size()*matsize);  
-    // std::cout << "Kernel launched 2 " <<sizeof(state)<<" "<<state.size()<< std::endl;
-    // cudaMemcpy(state_device, state.data(), matsize, cudaMemcpyHostToDevice);
-    // for (size_t i = 0; i < operator2.size(); i++) {
-    //   cudaMemcpy(tmp_stateV_device[i], tmp_stateV[i].data(), matsize, cudaMemcpyHostToDevice);
-    //   std::cout << "Kernel launched3 "<< i<< std::endl;
-    // }
-    // std::cout << "Kernel launched1" << std::endl;
-    // loop<<<blocksPerGrid, threadsPerBlock>>>(state_device, idx2det, det2idx, det_lookup_size, n_dets,
-    //                         operator2.data(), num_active_orbs, parity_check,tmp_stateV_device, rows, cols);
+
+    cudaFree(state_device);
+    cudaFree(tmp_stateV_device);
+    cudaFree(tmp_stateV_device2);
+    cudaFree(cu_idx2det);
+    cudaFree(cu_parity_check);
+    cudaFree(cu_operator2);
+    cudaFree(cu_operator4);
+    cudaFree(cu_operator6);
+    cudaFree(cu_operator8);
+    
+    for(int i = 0; i < operator2.size(); i++){
+      tmp_stateV[i] = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+      apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                              operator2[i], num_active_orbs, parity_check,tmp_stateV[i]);
+      std::cout << "tmp_state cuda[" << i << "] =\n " << tmp_stateV[i] << std::endl;
+    }
+
+    for(int i = 0; i < operator4.size(); i++){
+      tmp_stateV[i] = Eigen::MatrixXd::Zero(state.rows(), state.cols());
+      apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
+                              operator4[i], num_active_orbs, parity_check,tmp_stateV[i]);
+      std::cout << "tmp_state cuda[" << i << "] =\n " << tmp_stateV[i] << std::endl;
+    }
     std::cout << "Kernel launched" << std::endl;
     if(USE_CUDA == false){
       #pragma omp parallel for
       for (size_t i = 0; i < operator2.size(); i++) {
       apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                               operator2[i], num_active_orbs, parity_check,tmp_stateV[i]);
+
+      std::cout << "tmp_state 2-body[" << i << "] = \n" << tmp_stateV[i] << std::endl;
       }
       #pragma omp parallel for
       for (size_t i = 0; i < operator4.size(); i++) {
