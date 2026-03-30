@@ -17,7 +17,7 @@ set(CMAKE_C_COMPILER "nvcc")
 # 2. Define the Python Module
 # The module name (solver_accel) must match the PYBIND11_MODULE name in C++
 
-pybind11_add_module(fermionic_ops_cuda  src/m4.cu src/prop.cu)
+pybind11_add_module(fermionic_ops_cuda  src/m4.cu src/prop.cu src/prop2.cu)
 
 # 3. Link Libraries
 target_link_libraries(fermionic_ops_cuda PRIVATE 

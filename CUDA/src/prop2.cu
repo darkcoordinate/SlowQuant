@@ -176,35 +176,69 @@ __global__ void scale_points_kernel(Point<T>* in, Point<T>* out, T factor, int n
 }
 
 
-int main() {
-    const int N = 1024;
-    const float factor = 2.0f;
 
-    // 3. Prepare Data using Thrust
-    thrust::host_vector<Point<float>> h_in(N);
-    for(int i = 0; i < N; ++i) {
-        h_in[i] = { (float)i, (float)i * 10.0f };
-    }
 
-    thrust::device_vector<Point<float>> d_in = h_in;
-    thrust::device_vector<Point<float>> d_out(N);
+py::array_t<double> derivative_theta_ket(
+    py::EigenDRef<Eigen::MatrixXd> bra, const py::list &py_ops,
+    const py::list &py_ops2, py::EigenDRef<Eigen::MatrixXd> ket,
+    const py::object &py_ci_info, const py::array_t<double> &py_thetas,
+    const py::object &py_wf_struct, py::bool_ py_do_folding,
+    py::int_ specific_state) {
 
-    // 4. Launch Template Kernel
-    // We specify <float, 256> to the template
-    int threads = 256;
-    int blocks = (N + threads - 1) / threads;
-    
-    scale_points_kernel<float, 256><<<blocks, threads>>>(
-        thrust::raw_pointer_cast(d_in.data()), 
-        thrust::raw_pointer_cast(d_out.data()), 
-        factor, 
-        N
-    );
+  // py::gil_scoped_release release;
+  std::vector<FermionicOperator> ops;
+  std::vector<FermionicOperator> ops2;
+  std::vector<double> gr_list(py_ops.size());
+  int specific_state_ = specific_state.cast<int>();
+  std::vector<double> thetas = py_thetas.cast<std::vector<double>>();
+  CI_Info ci_info(py_ci_info);
+  std::cout << "************************ :";
+  std::cout << py_ops.size() << std::endl;
+  // auto start = std::chrono::steady_clock::now();
 
-    // 5. Verification
-    thrust::host_vector<Point<float>> h_out = d_out;
-    std::cout << "Input[5]: (" << h_in[5].x << ", " << h_in[5].y << ")\n";
-    std::cout << "Scaled[5]: (" << h_out[5].x << ", " << h_out[5].y << ")\n";
+  std::vector<FermionicOperator> T_list;
+  for (size_t i = 0; i < py_ops.size(); i++) {
+    T_list.push_back(FermionicOperator(
+        py_ops[i]
+            .attr("operators")
+            .cast<std::map<std::vector<std::tuple<int, bool>>, double>>()));
+  }
+  FermionicOperator Hamiltonian(
+      py_ops2[0]
+          .attr("operators")
+          .cast<std::map<std::vector<std::tuple<int, bool>>, double>>());
+  bool do_folding = py_do_folding.cast<bool>();
+  std::ofstream MyFile("filename.txt");
 
-    return 0;
+#pragma omp parallel for ordered
+  for (size_t i = 0; i < py_ops.size(); i++) {
+    int tid = omp_get_thread_num();
+    double gr = 0;
+
+    // MyFile <<" "<<i<<" " << "\n";
+    gr = expectation_vector_SA(bra, {T_list[i], Hamiltonian}, ket, ci_info,
+                               thetas, py_wf_struct,
+                               do_folding)(specific_state_, specific_state_);
+    gr -= expectation_vector_SA(bra, {Hamiltonian, T_list[i]}, ket, ci_info,
+                                thetas, py_wf_struct,
+                                do_folding)(specific_state_, specific_state_);
+    gr_list[i] = gr;
+    MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
+    // auto end = std::chrono::steady_clock::now();
+    // auto diff = end - start;
+    // std::cout << " time :" ;
+    // std::cout <<
+    // std::chrono::duration_cast<std::chrono::nanoseconds>(diff).count() <<
+    // std::endl; start = end;
+  }
+  MyFile.close();
+  return py::cast(gr_list);
+}
+
+
+PYBIND11_MODULE(fermionic_ops, m) {
+    m.def("derivative_theta_ket", &derivative_theta_ket, py::arg("bra"),
+        py::arg("op1"), py::arg("op2"), py::arg("ket"), py::arg("ci_info"),
+        py::arg("thetas"), py::arg("wf_struct"), py::arg("do_folding") = true,
+        py::arg("specific_state"), "good", py::return_value_policy::move);
 }
