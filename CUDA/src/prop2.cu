@@ -1,9 +1,28 @@
-#include <iostream>
-#include <vector>
-#include <cuda_runtime.h>
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <fmt/core.h>
+#include <iostream>
+#include <map>
+#include <omp.h>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#define PYBIND11_BUILD
+#ifdef PYBIND11_BUILD
+#include <Eigen/Dense>
+#include <pybind11/eigen.h>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+namespace py = pybind11;
+#endif
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 // 1. A template struct (similar to a cuco 'Slot')
 template <typename T>
@@ -20,18 +39,24 @@ class op_point{
     signed char idx;
     bool anni;
 
-    op_point(signed char idx, bool anni){
+    __device__ __host__ op_point(signed char idx, bool anni){
         this->idx = idx;
         this->anni = anni;
         hash = anni<<8 | idx;
     }
 
+    __device__ __host__ op_point(){
+        idx = EMPTY_IDX;
+        anni = false;
+        hash = 0;
+    }
+
     // Must define equality for use in hash containers
-    bool operator==(const op_point& other) const {
+    __device__ __host__ bool operator==(const op_point& other) const {
         return hash == other.hash;
     }
 
-    bool operator!=(const op_point& other) const {
+    __device__ __host__ bool operator!=(const op_point& other) const {
         return !(*this == other);
     }
 };
@@ -40,6 +65,11 @@ struct set{
     op_point key[16];
     int size = -1;
     double value;
+
+    __device__ __host__ set(){
+        size = -1;
+        value = 0.0;
+    }
 
     __device__ bool is_empty(){
         return size == -1;
@@ -53,7 +83,7 @@ struct set{
         return true;
     }
 
-    __device__ size_t hash_set(){
+    __device__ size_t hash_set() const {
         size_t hash = 0;
         for(int i = 0; i < size; i++){
             hash += key[i].hash;
@@ -67,11 +97,11 @@ struct FermionicOperator{    // this is fermionic expression.
     int size;
     int capacity;
 
-    __device__ __host__ size_t hash_func(size_t hash, int capacity){ // this should give a unique hash for each set.
+    __host__ __device__  size_t hash_func(size_t hash, int capacity){ // this should give a unique hash for each set.
         return hash % capacity;
     }
-    __device__ int find(const set& s){
-        unsigned int slot = hash_func(hash_set(s), capacity);
+    __host__ __device__  int find(const set& s){
+        unsigned int slot = hash_func(s.hash_set(), capacity);
         while (sets[slot].is_empty()) {
             if (sets[slot].key_eq(s)) {
                 return slot;
@@ -81,7 +111,7 @@ struct FermionicOperator{    // this is fermionic expression.
         return -1; // Not found
     }
 
-    __device__ double get_value(const set& s){
+    __host__ __device__  double get_value(const set& s){
         int slot = find(s);
         if(slot != -1){
             return sets[slot].value;
@@ -89,12 +119,12 @@ struct FermionicOperator{    // this is fermionic expression.
         return 0.0;
     }
 
-    __device__ void insert(const set& s){
+    __host__ __device__  void insert(const set& s){
         int slot = find(s);
         if(slot != -1){
             sets[slot].value += s.value;
         }else{
-            slot = hash_func(hash_set(s), capacity);
+            slot = hash_func(s.hash_set(), capacity);
             while (!sets[slot].is_empty()) {
                 slot = (slot + 1) % capacity;
             }
@@ -102,8 +132,8 @@ struct FermionicOperator{    // this is fermionic expression.
         }
     }   
 
-    __device__ void insert_atomic(const set& s){
-        unsigned int slot = hash_func(hash_set(s), capacity);
+    __host__ __device__  void insert_atomic(const set& s){
+        unsigned int slot = hash_func(s.hash_set(), capacity);
         while (sets[slot].is_empty()) {
             if (sets[slot].key_eq(s)) {
                 atomicAdd(&sets[slot].value, s.value);
@@ -113,37 +143,9 @@ struct FermionicOperator{    // this is fermionic expression.
         }
         sets[slot] = s;
     }
-
-    __device__ double operator[](const set& s){
-        return get_value(s);
-    }
-
-    __device__ void operator+=(const set& s){
-        insert(s);
-    }
-
-    __device__ void operator-=(const set& s){
-        insert(set(s.key, -s.value));
-    }
-
-    __device__ void operator*=(const double factor){
-        for(int i = 0; i < size; i++){
-            sets[i].value *= factor;
-        }
-    }
-
-    __device__ void operator*=(const FermionicOperator& other){
-        FermionicOperator result;
-        for(int i = 0; i < size; i++){
-            for(int j = 0; j < other.size; j++){
-                result.insert(set(sets[i].key + other.sets[j].key, sets[i].value * other.sets[j].value));
-            }
-        }
-        *this = result;
-    }   
 };
 
-__device__ __host__ size_t hash_op_point(struct op_point p) {
+__host__ __device__ size_t hash_op_point(struct op_point p) {
     // Map signed char to 0-255 range to prevent negative results
     unsigned char val = (unsigned char)p.idx;
     // Combine: [anni (1 bit)][idx (8 bits)]
@@ -152,7 +154,7 @@ __device__ __host__ size_t hash_op_point(struct op_point p) {
 
 
 
-__device__ __host__ size_t hash_set(const set& s) {
+__host__ __device__ size_t hash_set(const set& s) {
     size_t hash = 0x811c9dc5; // FNV offset basis
     for (int i = 0; i < s.size; ++i) {
         // Pack op_point into a single byte + bit (0-511)
@@ -175,6 +177,35 @@ __global__ void scale_points_kernel(Point<T>* in, Point<T>* out, T factor, int n
     }
 }
 
+class CI_Info {
+public:
+  int num_active_elec_alpha;
+  int num_active_elec_beta;
+  int num_active_orbs;
+  int num_inactive_orbs;
+  int num_virtual_orbs;
+  int space_extension_offset;
+  std::map<uint64_t, uint64_t> det2idx;
+  std::vector<uint64_t> idx2det;
+
+
+
+  CI_Info(py::object py_ci_info) {
+    py::dict d = py_ci_info.attr("det2idx").cast<py::dict>();
+    for (auto item : d) {
+      det2idx[item.first.cast<uint64_t>()] = item.second.cast<uint64_t>();
+    }
+    idx2det = py_ci_info.attr("idx2det").cast<std::vector<uint64_t>>();
+    num_active_elec_alpha =
+        py_ci_info.attr("num_active_elec_alpha").cast<int>();
+    num_active_elec_beta = py_ci_info.attr("num_active_elec_beta").cast<int>();
+    num_active_orbs = py_ci_info.attr("num_active_orbs").cast<int>();
+    num_inactive_orbs = py_ci_info.attr("num_inactive_orbs").cast<int>();
+    num_virtual_orbs = py_ci_info.attr("num_virtual_orbs").cast<int>();
+    space_extension_offset =
+        py_ci_info.attr("space_extension_offset").cast<int>();
+  }
+};
 
 
 
@@ -196,42 +227,55 @@ py::array_t<double> derivative_theta_ket(
   std::cout << py_ops.size() << std::endl;
   // auto start = std::chrono::steady_clock::now();
 
-  std::vector<FermionicOperator> T_list;
+  //std::vector<FermionicOperator> T_list;
   for (size_t i = 0; i < py_ops.size(); i++) {
-    T_list.push_back(FermionicOperator(
-        py_ops[i]
-            .attr("operators")
-            .cast<std::map<std::vector<std::tuple<int, bool>>, double>>()));
+    //std::cout << py_ops[i].attr("operators").attr("keys") << std::endl;
+    FermionicOperator op;
+    py::dict d = py_ops[i].attr("operators").cast<py::dict>();
+    for (auto item : d) {
+        py::tuple t = item.first.cast<py::tuple>();
+        set s;
+        for (size_t j = 0; j < t.size(); j++) {
+            py::tuple t2 = t[j].cast<py::tuple>();
+            std::cout <<"T_list"<<i<<": "<<t2[0].cast<int>() << " " << t2[1].cast<bool>() << std::endl;
+            s.sets[j] = op_point{t2[0].cast<int>(), t2[1].cast<bool>()};
+        }
+        s.value = item.second.cast<double>();
+        op.insert(s);
+        std::cout <<"T_list"<<i<<": "<<item.first << " " << item.second << std::endl;
+    }
+    //auto c =  py_ops[i].attr("operators").cast<set>();
+    //T_list.push_back(FermionicOperator(py_ops[i].cast<>()));
   }
-  FermionicOperator Hamiltonian(
-      py_ops2[0]
-          .attr("operators")
-          .cast<std::map<std::vector<std::tuple<int, bool>>, double>>());
-  bool do_folding = py_do_folding.cast<bool>();
-  std::ofstream MyFile("filename.txt");
+//   FermionicOperator Hamiltonian(
+//       py_ops2[0]
+//           .attr("operators")
+//           .cast<std::map<std::vector<std::tuple<int, bool>>, double>>());
+//   bool do_folding = py_do_folding.cast<bool>();
+//   std::ofstream MyFile("filename.txt");
 
-#pragma omp parallel for ordered
-  for (size_t i = 0; i < py_ops.size(); i++) {
-    int tid = omp_get_thread_num();
-    double gr = 0;
+// #pragma omp parallel for ordered
+//   for (size_t i = 0; i < py_ops.size(); i++) {
+//     int tid = omp_get_thread_num();
+//     double gr = 0;
 
-    // MyFile <<" "<<i<<" " << "\n";
-    gr = expectation_vector_SA(bra, {T_list[i], Hamiltonian}, ket, ci_info,
-                               thetas, py_wf_struct,
-                               do_folding)(specific_state_, specific_state_);
-    gr -= expectation_vector_SA(bra, {Hamiltonian, T_list[i]}, ket, ci_info,
-                                thetas, py_wf_struct,
-                                do_folding)(specific_state_, specific_state_);
-    gr_list[i] = gr;
-    MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
-    // auto end = std::chrono::steady_clock::now();
-    // auto diff = end - start;
-    // std::cout << " time :" ;
-    // std::cout <<
-    // std::chrono::duration_cast<std::chrono::nanoseconds>(diff).count() <<
-    // std::endl; start = end;
-  }
-  MyFile.close();
+//     // MyFile <<" "<<i<<" " << "\n";
+//     gr = expectation_vector_SA(bra, {T_list[i], Hamiltonian}, ket, ci_info,
+//                                thetas, py_wf_struct,
+//                                do_folding)(specific_state_, specific_state_);
+//     gr -= expectation_vector_SA(bra, {Hamiltonian, T_list[i]}, ket, ci_info,
+//                                 thetas, py_wf_struct,
+//                                 do_folding)(specific_state_, specific_state_);
+//     gr_list[i] = gr;
+//     MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
+//     // auto end = std::chrono::steady_clock::now();
+//     // auto diff = end - start;
+//     // std::cout << " time :" ;
+//     // std::cout <<
+//     // std::chrono::duration_cast<std::chrono::nanoseconds>(diff).count() <<
+//     // std::endl; start = end;
+//   }
+//   MyFile.close();
   return py::cast(gr_list);
 }
 

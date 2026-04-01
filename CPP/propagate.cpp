@@ -23,7 +23,7 @@ namespace py = pybind11;
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
-
+#define PYBIND11_DETAILED_ERROR_MESSAGES 
 #include "fermionic_operator.hpp"
 //#include "operators.hpp"
 int t1(const py::dict py_ops) {
@@ -396,7 +396,10 @@ public:
   std::map<uint64_t, uint64_t> det2idx;
   std::vector<uint64_t> idx2det;
   CI_Info(py::object py_ci_info) {
-    det2idx = py_ci_info.attr("det2idx").cast<std::map<uint64_t, uint64_t>>();
+    py::dict d = py_ci_info.attr("det2idx").cast<py::dict>();
+    for (auto item : d) {
+      det2idx[item.first.cast<uint64_t>()] = item.second.cast<uint64_t>();
+    }
     idx2det = py_ci_info.attr("idx2det").cast<std::vector<uint64_t>>();
     num_active_elec_alpha =
         py_ci_info.attr("num_active_elec_alpha").cast<int>();
@@ -519,7 +522,7 @@ py::array_t<double> derivative_theta_ket(
     const py::object &py_ci_info, const py::array_t<double> &py_thetas,
     const py::object &py_wf_struct, py::bool_ py_do_folding,
     py::int_ specific_state) {
-
+  std::cout << "************************ :" << py_ops.size() << std::endl;
   // py::gil_scoped_release release;
   std::vector<FermionicOperator> ops;
   std::vector<FermionicOperator> ops2;
@@ -538,6 +541,7 @@ py::array_t<double> derivative_theta_ket(
             .attr("operators")
             .cast<std::map<std::vector<std::tuple<int, bool>>, double>>()));
   }
+  std::cout << "T_list size: " << T_list.size() << std::endl;
   FermionicOperator Hamiltonian(
       py_ops2[0]
           .attr("operators")
@@ -558,6 +562,7 @@ py::array_t<double> derivative_theta_ket(
                                 thetas, py_wf_struct,
                                 do_folding)(specific_state_, specific_state_);
     gr_list[i] = gr;
+    std::cout << "thread :" << tid << " step :" << i << " " << gr << std::endl;
     MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
     // auto end = std::chrono::steady_clock::now();
     // auto diff = end - start;
@@ -567,6 +572,10 @@ py::array_t<double> derivative_theta_ket(
     // std::endl; start = end;
   }
   MyFile.close();
+
+  for (int i = 0; i < gr_list.size(); i++) {
+    std::cout << "gr_list: " << i << " = " << gr_list[i] << std::endl;
+  }
   return py::cast(gr_list);
 }
 
@@ -658,6 +667,7 @@ PYBIND11_MODULE(fermionic_ops, m) {
   m.def("test_SA", &test_SA, py::arg("operators"), py::arg("ci_coeffs"),
         py::arg("ci_info"), py::arg("thetas"), py::arg("wf_struct"),
         py::arg("do_folding"), "good", py::return_value_policy::move);
+  
   m.def("derivative_theta_ket", &derivative_theta_ket, py::arg("bra"),
         py::arg("op1"), py::arg("op2"), py::arg("ket"), py::arg("ci_info"),
         py::arg("thetas"), py::arg("wf_struct"), py::arg("do_folding") = true,

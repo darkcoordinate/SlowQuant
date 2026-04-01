@@ -56,7 +56,9 @@ from slowquant.unitary_coupled_cluster.util import UpsStructure
 from slowquant.unitary_coupled_cluster.util import *
 
 
-import CUDA.build.fermionic_ops_cuda as fops
+import CUDA.build.fermionic_ops_cuda as fops_cuda
+import CUDA.build.fermionic_ops as fops
+#import CPP.build.fermionic_ops as fops
 
 class WaveFunctionSAADAPT:
     def __init__(
@@ -380,6 +382,9 @@ class WaveFunctionSAADAPT:
             #        f"------GP {str(mi).center(3)} {str(grad[mi]).center(27)} | {str(self.excitation_pool[mi]).center(18)} | {self.excitation_pool_type[mi].center(27)}"
             #    )
             #print()
+            print("#################################")
+            print(grad)
+            print(len(grad))
             print(np.argmax(np.abs(grad)))
             max_arg = np.argmax(np.abs(grad))
             
@@ -528,7 +533,7 @@ class WaveFunctionSAADAPT:
             elif self.excitation_pool_type[i] == "double":
                 (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
                 T = G2(mi, mj, ma, mb, True)
-            #Tap.append(T)
+            Tap.append(T)
             #print(T.operators)
             #fops.t1(T.operators)
             #print("************************")
@@ -547,6 +552,8 @@ class WaveFunctionSAADAPT:
             grad.append(gr) 
             print(i) 
         
+        print("#################################")
+        print(Tap)
         grad2 = fops.derivative_theta_ket(self.ci_coeffs,Tap, [Hamiltonian],  self.ci_coeffs,
                                self.ci_info, self.thetas,self.ups_layout, do_folding=True , specific_state=int(self.specific_state))
 
@@ -556,7 +563,8 @@ class WaveFunctionSAADAPT:
         #exit()
 
             
-        print(grad)    
+        print(grad2)
+        exit()
         return grad2
             
         
