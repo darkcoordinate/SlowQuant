@@ -24,6 +24,9 @@ namespace py = pybind11;
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+
 // 1. A template struct (similar to a cuco 'Slot')
 template <typename T>
 struct Point {
@@ -42,13 +45,16 @@ class op_point{
     __device__ __host__ op_point(signed char idx, bool anni){
         this->idx = idx;
         this->anni = anni;
-        hash = anni<<8 | idx;
+        hash = (1<<(2*anni))<<8 | idx;
     }
 
     __device__ __host__ op_point(){
         idx = EMPTY_IDX;
         anni = false;
         hash = 0;
+    }
+    __device__ __host__ void print() const{
+        printf("[idx: %d, anni: %d, hash: %d ]", idx, anni, hash);   
     }
 
     // Must define equality for use in hash containers
@@ -65,6 +71,7 @@ struct set{
     op_point key[16];
     int size = -1;
     double value;
+    size_t hash;
 
     __host__ __device__ set(){
         size = -1;
@@ -83,26 +90,44 @@ struct set{
         return true;
     }
 
-    __host__ __device__ size_t hash_set() const {
-        size_t hash = 0;
+    __host__ __device__ void print(){
+        printf("size: %d, value: %f [ ", size, value);
         for(int i = 0; i < size; i++){
-            hash += key[i].hash;
+            key[i].print();
         }
-        return hash;
+        printf("]\n");
     }
+
+    __host__ __device__ size_t hash_set() const {
+        size_t t_hash = 0;
+        for(int i = 0; i < size; i++){
+            t_hash +=(key[i].hash <<(8*i));
+        }
+        this->hash = t_hash;
+        return t_hash;
+    }
+    
 };
 
 struct FermionicOperator{    // this is fermionic expression.
     set* sets;
     int size;
-    int capacity;
+    const size_t capacity  = 1<<16;
 
-    __host__ __device__  size_t hash_func(const size_t hash, int capacity){ // this should give a unique hash for each set.
+    __host__ __device__ FermionicOperator(){
+        sets = nullptr;
+        size = 0;
+    }
+
+    __host__ __device__ const  size_t hash_func(const size_t hash, const size_t capacity) const { // this should give a unique hash for each set.
         return hash % capacity;
     }
     __host__ __device__  int find(const set& s){
         const size_t hash = s.hash_set();
-        unsigned int slot = hash_func(hash, capacity);
+        size_t slot = hash_func(hash, capacity);
+        if(sets == nullptr){
+            return -1;
+        }
         while (sets[slot].is_empty()) {
             if (sets[slot].key_eq(s)) {
                 return slot;
@@ -126,12 +151,27 @@ struct FermionicOperator{    // this is fermionic expression.
             sets[slot].value += s.value;
         }else{
             slot = hash_func(s.hash_set(), capacity);
+            if(sets == nullptr){
+                sets = new set[capacity];
+            }
             while (!sets[slot].is_empty()) {
                 slot = (slot + 1) % capacity;
             }
             sets[slot] = s;
         }
-    }   
+    }
+
+    __host__ __device__ double get_value(const set& s){
+        int slot = find(s);
+        if(slot != -1){
+            return sets[slot].value;
+        }
+        return 0.0;
+    }
+
+    __host__ __device__ double operator[](const set& s){
+        return get_value(s);
+    }
 
     // __host__ __device__  void insert_atomic(const set& s){
     //     unsigned int slot = hash_func(s.hash_set(), capacity);
@@ -236,14 +276,17 @@ py::array_t<double> derivative_theta_ket(
     for (auto item : d) {
         py::tuple t = item.first.cast<py::tuple>();
         set s;
+        s.size = t.size();
         for (size_t j = 0; j < t.size(); j++) {
             py::tuple t2 = t[j].cast<py::tuple>();
             std::cout <<"T_list"<<i<<": "<<t2[0].cast<int>() << " " << t2[1].cast<bool>() << std::endl;
-            s.key[j] = op_point{t2[0].cast<int>(), t2[1].cast<bool>()};
+            s.key[j] = op_point{t2[0].cast<signed char>(), t2[1].cast<bool>()};
+            std::cout<<"Happe"<<std::endl;
         }
+        std::cout<<"Naaa"<<item.second<<std::endl;
         s.value = item.second.cast<double>();
+        s.print();
         op.insert(s);
-        std::cout <<"T_list"<<i<<": "<<item.first << " " << item.second << std::endl;
     }
     //auto c =  py_ops[i].attr("operators").cast<set>();
     //T_list.push_back(FermionicOperator(py_ops[i].cast<>()));
