@@ -66,16 +66,16 @@ struct set{
     int size = -1;
     double value;
 
-    __device__ __host__ set(){
+    __host__ __device__ set(){
         size = -1;
         value = 0.0;
     }
 
-    __device__ bool is_empty(){
+    __host__ __device__ bool is_empty(){
         return size == -1;
     }
 
-    __device__ bool key_eq(const set& other) const {
+    __host__ __device__ bool key_eq(const set& other) const {
         if(size != other.size) return false;
         for(int i = 0; i < size; i++){
             if(key[i] != other.key[i]) return false;
@@ -83,7 +83,7 @@ struct set{
         return true;
     }
 
-    __device__ size_t hash_set() const {
+    __host__ __device__ size_t hash_set() const {
         size_t hash = 0;
         for(int i = 0; i < size; i++){
             hash += key[i].hash;
@@ -97,11 +97,12 @@ struct FermionicOperator{    // this is fermionic expression.
     int size;
     int capacity;
 
-    __host__ __device__  size_t hash_func(size_t hash, int capacity){ // this should give a unique hash for each set.
+    __host__ __device__  size_t hash_func(const size_t hash, int capacity){ // this should give a unique hash for each set.
         return hash % capacity;
     }
     __host__ __device__  int find(const set& s){
-        unsigned int slot = hash_func(s.hash_set(), capacity);
+        const size_t hash = s.hash_set();
+        unsigned int slot = hash_func(hash, capacity);
         while (sets[slot].is_empty()) {
             if (sets[slot].key_eq(s)) {
                 return slot;
@@ -132,17 +133,17 @@ struct FermionicOperator{    // this is fermionic expression.
         }
     }   
 
-    __host__ __device__  void insert_atomic(const set& s){
-        unsigned int slot = hash_func(s.hash_set(), capacity);
-        while (sets[slot].is_empty()) {
-            if (sets[slot].key_eq(s)) {
-                atomicAdd(&sets[slot].value, s.value);
-                return;
-            }
-            slot = (slot + 1) % capacity;
-        }
-        sets[slot] = s;
-    }
+    // __host__ __device__  void insert_atomic(const set& s){
+    //     unsigned int slot = hash_func(s.hash_set(), capacity);
+    //     while (sets[slot].is_empty()) {
+    //         if (sets[slot].key_eq(s)) {
+    //             atomicAdd(&sets[slot].value, s.value);
+    //             return;
+    //         }
+    //         slot = (slot + 1) % capacity;
+    //     }
+    //     sets[slot] = s;
+    // }
 };
 
 __host__ __device__ size_t hash_op_point(struct op_point p) {
@@ -238,7 +239,7 @@ py::array_t<double> derivative_theta_ket(
         for (size_t j = 0; j < t.size(); j++) {
             py::tuple t2 = t[j].cast<py::tuple>();
             std::cout <<"T_list"<<i<<": "<<t2[0].cast<int>() << " " << t2[1].cast<bool>() << std::endl;
-            s.sets[j] = op_point{t2[0].cast<int>(), t2[1].cast<bool>()};
+            s.key[j] = op_point{t2[0].cast<int>(), t2[1].cast<bool>()};
         }
         s.value = item.second.cast<double>();
         op.insert(s);
