@@ -1,17 +1,16 @@
 cmake_minimum_required(VERSION 3.18)
 project(fermionic_ops_cuda LANGUAGES CXX CUDA)
-
+#set(pybind11_DIR "/media/rudra/Windows-SSD1/Users/Default/ic1/tst/cpp_quant/extras/pybind11/")
 # 1. Find Dependencies
 find_package(Python COMPONENTS Interpreter Development)
 find_package(pybind11 CONFIG)
 find_package(pybind11 REQUIRED)
-
 find_package(Eigen3 REQUIRED)
 
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CUDA_ARCHITECTURES 86)
 set(CMAKE_CUDA_FLAGS "-Xcompiler -fPIC --expt-extended-lambda")
-set(CMAKE_CXX_COMPILER "nvcc")
-set(CMAKE_C_COMPILER "nvcc")
 
 # 2. Define the Python Module
 # The module name (solver_accel) must match the PYBIND11_MODULE name in C++

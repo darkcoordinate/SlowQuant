@@ -98,12 +98,12 @@ struct set{
         printf("]\n");
     }
 
-    __host__ __device__ size_t hash_set() const {
+    __host__ __device__ size_t hash_set() const{
         size_t t_hash = 0;
         for(int i = 0; i < size; i++){
             t_hash +=(key[i].hash <<(8*i));
         }
-        this->hash = t_hash;
+        //hash = t_hash;
         return t_hash;
     }
     
@@ -137,13 +137,6 @@ struct FermionicOperator{    // this is fermionic expression.
         return -1; // Not found
     }
 
-    __host__ __device__  double get_value(const set& s){
-        int slot = find(s);
-        if(slot != -1){
-            return sets[slot].value;
-        }
-        return 0.0;
-    }
 
     __host__ __device__  void insert(const set& s){
         int slot = find(s);
@@ -158,6 +151,7 @@ struct FermionicOperator{    // this is fermionic expression.
                 slot = (slot + 1) % capacity;
             }
             sets[slot] = s;
+            sets[slot].hash = s.hash_set();
         }
     }
 
@@ -171,6 +165,101 @@ struct FermionicOperator{    // this is fermionic expression.
 
     __host__ __device__ double operator[](const set& s){
         return get_value(s);
+    }
+
+    __host__ __device__ FermionicOperator operator+(const FermionicOperator& other){
+        FermionicOperator result;
+        for(int i = 0; i < this->size; i++){
+            result.insert(this->sets[i]);
+        }
+        for(int i = 0; i < other.size; i++){
+            result.insert(other.sets[i]);
+        }
+        return result;
+    }
+
+
+    __host__ __device__  void insert_m(const set& s){
+        int slot = find(s);
+        if(slot != -1){
+            sets[slot].value -= s.value;
+        }else{
+            slot = hash_func(s.hash_set(), capacity);
+            if(sets == nullptr){
+                sets = new set[capacity];
+            }
+            while (!sets[slot].is_empty()) {
+                slot = (slot + 1) % capacity;
+            }
+            sets[slot] = s;
+            sets[slot].value = -s.value;
+            sets[slot].hash = s.hash_set();
+        }
+    }
+
+     __host__ __device__ FermionicOperator operator-(const FermionicOperator& other){
+        FermionicOperator result;
+        for(int i = 0; i < this->size; i++){
+            result.insert(this->sets[i]);
+        }
+        for(int i = 0; i < other.size; i++){
+            result.insert_m(other.sets[i]);
+        }
+        return result;
+    }
+
+
+     __host__ __device__ FermionicOperator operator*(const FermionicOperator& other){
+        FermionicOperator result;
+        for(int i = 0; i < this->size; i++){
+           for(int j = 0; j < other.size; j++){
+               set s;
+               for(int k = 0; k < this->sets[i].size; k++){
+                   s.key[k] = this->sets[i].key[k];
+               }
+               for(int k = this->sets[i].size; k < this->sets[i].size + other.sets[j].size; k++){
+                   s.key[k] = other.sets[j].key[k - this->sets[i].size];
+               }
+               s.size = this->sets[i].size + other.sets[j].size;
+               s.value = this->sets[i].value * other.sets[j].value;
+               result.insert(s);
+           }
+        }
+        return result;
+    }
+
+    __host__ __device__ FermionicOperator operator*(double scalar){
+        FermionicOperator result;
+        for(int i = 0; i < this->size; i++){
+            result.insert(this->sets[i]);
+            result.sets[i].value = this->sets[i].value * scalar;
+        }
+        return result;
+    }
+
+
+    // __host__ __device__  void insert_atomic(const set& s){
+    //     unsigned int slot = hash_func(s.hash_set(), capacity);
+    //     while (sets[slot].is_empty()) {
+    //         if (sets[slot].key_eq(s)) {
+    //             atomicAdd(&sets[slot].value, s.value);
+    //             return;
+    //         }
+    //         slot = (slot + 1) % capacity;
+    //     }
+    //     sets[slot] = s;
+    // }
+
+     __host__ __device__ FermionicOperator operator+(const FermionicOperator& other){
+        FermionicOperator result;   
+        result.sets = new set[capacity];
+        for(int i = 0; i < other->size; i++){
+            find(other.sets[i]);
+        }
+        for(int i = 0; i < other.capacity; i++){
+            result.insert(other.sets[i]);
+        }
+        return result;
     }
 
     // __host__ __device__  void insert_atomic(const set& s){
