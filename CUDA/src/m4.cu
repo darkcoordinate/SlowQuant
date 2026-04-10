@@ -64,7 +64,7 @@ int main() {
   int device;
     cudaGetDeviceCount(&device);
     cudaDeviceProp prop;
-    cudaGetDeviceProperties(&prop, 0); // Assuming device 0
+    cudaGetDeviceProperties(&prop, wget https://developer.download.nvidia.com/hpc-sdk/26.3/nvhpc_2026_263_Linux_x86_64_cuda_multi.tar.gz0); // Assuming device 0
 
     std::cout << "Device Name: " << prop.name << std::endl;
     std::cout << "Max threads per block: " << prop.maxThreadsPerBlock << std::endl;

@@ -19,8 +19,8 @@ from slowquant.unitary_coupled_cluster.operators import (
 )
 from slowquant.unitary_coupled_cluster.util import UccStructure, UpsStructure
 import random
-#import CPP.build.fermionic_ops as fops
-import CUDA.build.fermionic_ops_cuda as fops
+import CPP.build.fermionic_ops as fops
+#import CUDA.build.fermionic_ops_cuda as fops
 
 
 @nb.jit(nopython=True)

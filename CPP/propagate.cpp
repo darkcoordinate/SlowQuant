@@ -522,7 +522,7 @@ py::array_t<double> derivative_theta_ket(
     const py::object &py_ci_info, const py::array_t<double> &py_thetas,
     const py::object &py_wf_struct, py::bool_ py_do_folding,
     py::int_ specific_state) {
-  std::cout << "************************ :" << py_ops.size() << std::endl;
+  // std::cout << "************************ :" << py_ops.size() << std::endl;
   // py::gil_scoped_release release;
   std::vector<FermionicOperator> ops;
   std::vector<FermionicOperator> ops2;
@@ -530,8 +530,8 @@ py::array_t<double> derivative_theta_ket(
   int specific_state_ = specific_state.cast<int>();
   std::vector<double> thetas = py_thetas.cast<std::vector<double>>();
   CI_Info ci_info(py_ci_info);
-  std::cout << "************************ :";
-  std::cout << py_ops.size() << std::endl;
+  // std::cout << "************************ :";
+  // std::cout << py_ops.size() << std::endl;
   // auto start = std::chrono::steady_clock::now();
 
   std::vector<FermionicOperator> T_list;
@@ -541,13 +541,13 @@ py::array_t<double> derivative_theta_ket(
             .attr("operators")
             .cast<std::map<std::vector<std::tuple<int, bool>>, double>>()));
   }
-  std::cout << "T_list size: " << T_list.size() << std::endl;
+  // std::cout << "T_list size: " << T_list.size() << std::endl;
   FermionicOperator Hamiltonian(
       py_ops2[0]
           .attr("operators")
           .cast<std::map<std::vector<std::tuple<int, bool>>, double>>());
   bool do_folding = py_do_folding.cast<bool>();
-  std::ofstream MyFile("filename.txt");
+  // std::ofstream MyFile("filename.txt");
 
 #pragma omp parallel for ordered
   for (size_t i = 0; i < py_ops.size(); i++) {
@@ -562,8 +562,8 @@ py::array_t<double> derivative_theta_ket(
                                 thetas, py_wf_struct,
                                 do_folding)(specific_state_, specific_state_);
     gr_list[i] = gr;
-    std::cout << "thread :" << tid << " step :" << i << " " << gr << std::endl;
-    MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
+    // std::cout << "thread :" << tid << " step :" << i << " " << gr << std::endl;
+    // MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
     // auto end = std::chrono::steady_clock::now();
     // auto diff = end - start;
     // std::cout << " time :" ;
@@ -571,11 +571,11 @@ py::array_t<double> derivative_theta_ket(
     // std::chrono::duration_cast<std::chrono::nanoseconds>(diff).count() <<
     // std::endl; start = end;
   }
-  MyFile.close();
+  //MyFile.close();
 
-  for (int i = 0; i < gr_list.size(); i++) {
-    std::cout << "gr_list: " << i << " = " << gr_list[i] << std::endl;
-  }
+  //for (int i = 0; i < gr_list.size(); i++) {
+  //  std::cout << "gr_list: " << i << " = " << gr_list[i] << std::endl;
+  //}
   return py::cast(gr_list);
 }
 
