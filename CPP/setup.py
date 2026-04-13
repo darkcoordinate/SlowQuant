@@ -20,7 +20,8 @@ def pkg_config(flag, lib):
 
 fmt_cflags  = pkg_config("--cflags", "fmt")
 fmt_ldflags = pkg_config("--libs",   "fmt")
-
+print(fmt_cflags)
+print(fmt_ldflags)
 
 openmp_cflags  = pkg_config("--cflags", "openmp")
 openmp_ldflags = pkg_config("--libs",   "openmp")

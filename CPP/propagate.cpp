@@ -347,39 +347,25 @@ Eigen::MatrixXd opLoop(const FermionicOperator &ops, const int num_active_orbs,
     }
   }
   Eigen::MatrixXd tmp_state = Eigen::MatrixXd::Zero(state.rows(), state.cols());
-  std::vector<Eigen::MatrixXd> tmp_stateV(operator2.size() + operator4.size() +
-                                          operator6.size() + operator8.size());
-  // std::cout << state.format(OctaveFmt) << std::endl;
-
-  //#pragma omp parallel for
   for (size_t i = 0; i < operator2.size(); i++) {
-    tmp_stateV[i] =
+    tmp_state +=
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator2[i], num_active_orbs, parity_check);
   }
-  //#pragma omp parallel for
   for (size_t i = 0; i < operator4.size(); i++) {
-    tmp_stateV[i + operator2.size()] =
+    tmp_state +=
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator4[i], num_active_orbs, parity_check);
   }
-
-  //#pragma omp parallel for
   for (size_t i = 0; i < operator6.size(); i++) {
-    tmp_stateV[i + operator2.size() + operator4.size()] =
+    tmp_state +=
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator6[i], num_active_orbs, parity_check);
   }
-  //#pragma omp parallel for
   for (size_t i = 0; i < operator8.size(); i++) {
-    tmp_stateV[i + operator2.size() + operator4.size() + operator6.size()] =
+    tmp_state +=
         apply_operator_SA_c(state, idx2det, det2idx, det_lookup_size, n_dets,
                             operator8[i], num_active_orbs, parity_check);
-  }
-
-  for (size_t i = 0; i < tmp_stateV.size(); i++) {
-
-    tmp_state += tmp_stateV[i];
   }
 
   return tmp_state;
@@ -547,7 +533,7 @@ py::array_t<double> derivative_theta_ket(
           .attr("operators")
           .cast<std::map<std::vector<std::tuple<int, bool>>, double>>());
   bool do_folding = py_do_folding.cast<bool>();
-  // std::ofstream MyFile("filename.txt");
+  std::ofstream MyFile("filename.txt");
 
 #pragma omp parallel for ordered
   for (size_t i = 0; i < py_ops.size(); i++) {
@@ -563,7 +549,7 @@ py::array_t<double> derivative_theta_ket(
                                 do_folding)(specific_state_, specific_state_);
     gr_list[i] = gr;
     // std::cout << "thread :" << tid << " step :" << i << " " << gr << std::endl;
-    // MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
+    MyFile << "thread :" << tid << " step :" << i << " " << gr << std::endl;
     // auto end = std::chrono::steady_clock::now();
     // auto diff = end - start;
     // std::cout << " time :" ;
@@ -571,7 +557,7 @@ py::array_t<double> derivative_theta_ket(
     // std::chrono::duration_cast<std::chrono::nanoseconds>(diff).count() <<
     // std::endl; start = end;
   }
-  //MyFile.close();
+  MyFile.close();
 
   //for (int i = 0; i < gr_list.size(); i++) {
   //  std::cout << "gr_list: " << i << " = " << gr_list[i] << std::endl;
