@@ -9,7 +9,6 @@ import numpy as np
 import scipy
 import scipy.optimize
 import matplotlib.pyplot as plt
-import time
 #from rich import print
 
 from slowquant.molecularintegrals.integralfunctions import (
@@ -29,7 +28,6 @@ from slowquant.unitary_coupled_cluster.operator_state_algebra import (
     get_grad_action_SA,
     #get_grad_for_excitation,
     propagate_state_SA,
-    propagate_state_SA_p,
     propagate_unitary_SA,
     
 )
@@ -55,10 +53,9 @@ from slowquant.unitary_coupled_cluster.optimizers import Optimizers
 from slowquant.unitary_coupled_cluster.util import UpsStructure
 from slowquant.unitary_coupled_cluster.util import *
 
+import CPP.build.fermionic_ops as fops
 
-import CUDA.build.fermionic_ops_cuda as fops_cuda
-import CUDA.build.fermionic_ops as fops
-#import CPP.build.fermionic_ops as fops
+GRAD_DEBUG = False
 
 class WaveFunctionSAADAPT:
     def __init__(
@@ -255,18 +252,20 @@ class WaveFunctionSAADAPT:
         print(f"Number of active β electrons    : {self.num_active_elec_beta}")
         
         self.num_det = len(self.ci_info.idx2det)
-        #for i in self.ci_info.idx2det:
-        #    print("{:04b}".format(i))
+        for i in self.ci_info.idx2det:
+            print("{:08b}".format(i))
         # SA details
         self.num_states = len(states[0])
         self.csf_coeffs = np.zeros((self.num_states, self.num_det))  # state vector for each state in SA
         # Loop over all states in SA procedure
+        print(self.csf_coeffs)
         for i, (coeffs, on_vecs) in enumerate(zip(states[0], states[1])):
             if len(coeffs) != len(on_vecs):
                 raise ValueError(
                     f"Mismatch in number of coefficients, {len(coeffs)}, and number of determinants, {len(on_vecs)}. For {coeffs} and {on_vecs}"
                 )
             # Loop over all determinants of a given state
+            print(coeffs)
             for coeff, on_vec in zip(coeffs, on_vecs):
                 if len(on_vec) != self.num_active_spin_orbs:
                     raise ValueError(
@@ -274,6 +273,7 @@ class WaveFunctionSAADAPT:
                     )
                 idx = self.ci_info.det2idx[int(on_vec, 2)]
                 self.csf_coeffs[i, idx] = coeff
+        print(self.csf_coeffs)
         self._ci_coeffs = np.copy(self.csf_coeffs)
         for i, coeff_i in enumerate(self.ci_coeffs):
             for j, coeff_j in enumerate(self.ci_coeffs):
@@ -322,6 +322,14 @@ class WaveFunctionSAADAPT:
             self.excitation_pool.append((i+ self.num_inactive_spin_orbs, j + self.num_inactive_spin_orbs, a + self.num_inactive_spin_orbs, b + self.num_inactive_spin_orbs))
             self.excitation_pool_type.append("double")
 
+        # for a, i in iterate_t1(self.active_occ_spin_idx, self.active_unocc_spin_idx):
+        #     self.excitation_pool.append((int(a),int(i)))            
+        #     self.excitation_pool_type.append("single")
+        
+        # for a, i, b, j in iterate_t2(self.active_occ_spin_idx, self.active_unocc_spin_idx):
+        #     print(a, i , b, j)
+        #     self.excitation_pool.append((i, j, a, b))
+        #     self.excitation_pool_type.append("double")
         self.T_operators = []
         self.T_operators_type = []
         print(len(self.excitation_pool_type))
@@ -339,12 +347,13 @@ class WaveFunctionSAADAPT:
         
         print(len(self.excitation_pool_type))
         print(len(self.T_operators_type))
+
        
         
         
 
     
-    def do_adapt(self, maxiter=50, epoch=1e-6 , orbital_opt: bool = False, optimiser_algo="CG", skip_optimisation=0):
+    def do_adapt(self, maxiter=500, epoch=1e-6 , orbital_opt: bool = False, optimiser_algo="bfgs", skip_optimisation=0):
         
         
         
@@ -356,124 +365,168 @@ class WaveFunctionSAADAPT:
         #    print(a, i , b, j)
         #    self.excitation_pool.append((i, j, a, b))
         #    self.excitation_pool_type.append("double")
-        print(optimiser_algo)
-        grad = None
-        nloop = 0
-        skip_optimisation_counter = 0
-        self.E_old_adapt = 0
-        for i in range(maxiter):
-            grad = self.calculate_derivative_of_operator_pool()
-            print("#################################")
-            print(grad)
-            print(len(grad))
-            print(np.argmax(np.abs(grad)))
-            max_arg = np.argmax(np.abs(grad))
-            
-            print()
-            print("### Index of Max grad :: ", end=" ")
-            print(np.argmax(np.abs(grad)))
-            print("### Number of excitation gradient > %e :: "%(epoch), end=" ")
-            #print( (np.abs(grad) > epoch).sum())
-            max_arg = np.argmax(np.abs(grad))
-            max_short = np.flip(np.argsort(np.abs(grad)))
-            #print(max_short)
-            #print(skip_optimisation_counter)
-            bc= "BC"
-            print("SPIN_SS", end=" ")
-            diagonal_spin = self.sa_spin_penalty().diagonal()
-            for mi in diagonal_spin:
-                print(mi, end=" ")
-            print()
-            print("Diagonal element of the spin matrix")
-            print()
-            print()
-            if(np.max(np.abs(grad)) < epoch):
-                nloop = i
-                break
-            self.ups_layout.excitation_indices.append(np.array(self.excitation_pool[max_short[skip_optimisation_counter]])- self.num_inactive_spin_orbs)
-            self.ups_layout.excitation_operator_type.append(self.excitation_pool_type[max_short[skip_optimisation_counter]])
-            
-            #del self.excitation_pool[max_arg]
-            #del self.excitation_pool_type[max_arg]
-            self.ups_layout.n_params += 1
-            #self.excitation_pool = self.excitation_pool
-            #self.excitation_pool_type = self.excitation_pool_type
-            
-            #self.thetas = [ 0.0 for i in range(self.ups_layout.n_params)]
-            self._thetas.append(0.0)
-            print()
-            print("Printing UPS layout")
-            print("#############")
-            #print(self.ups_layout.excitation_indices)
-            #print()
-            #self.run_wf_optimization_2step("CG",  orbital_optimization=orbital_opt, tol=1e-10)
-            #self.run_wf_optimization_2step("bfgs",  orbital_optimization=orbital_opt, tol=1e-10)
-            #self.run_wf_optimization_2step("cobyla",  orbital_optimization=orbital_opt, tol=1e-10)
-            print(skip_optimisation)
-            print(skip_optimisation_counter)
-            if(skip_optimisation_counter == skip_optimisation):
-                self.run_wf_optimization_2step(optimiser_algo,  orbital_optimization=orbital_opt, tol=1e-10, maxiter=maxiter + 50)
-                skip_optimisation_counter = 0
-                
-            else:
-                skip_optimisation_counter += 1
-            #self.run_wf_optimization_2step("l-bfgs-b",  orbital_optimization=orbital_opt, tol=1e-10)
-            print()
-            print("------TP Printing the Optimised Theta")
-            print("------TP ############################")
-            
-            print(
-                    f"------TP {str("Thetas").center(27)} | {str("UPS Layout indices").center(18)} | {str("Excitation indices").center(18)} | {str("UPS Layout type").center(27)}"
-                )
-            
-            for mi in range(len(self._thetas)):
-                
+        with open("sa_adapt_wavefunction.txt", "a") as fwrite_f1:
+            grad = None
+            nloop = 0
+            skip_optimisation_counter   = 0
+            self.E_old_adapt = 0
+            for i in range(maxiter):
+                grad = self.calculate_derivative_of_operator_pool()
+                print()
+                if(GRAD_DEBUG == True):
+                    print("Printing Grad and Excitation Pool")
+                    print("#################################")
+                    print(
+                        f"------GP{str("").center(72)}"
+                    )
+                    print(
+                        f"------GP{str("-----------------------------------------------------------------------------------").center(72)}"
+                    )
+                    print(
+                        f"------GP{str("Grad").center(27)} | {str("Excitation Pool indices").center(18)} | {str("Excitation Pool type").center(27)}"
+                    )
+                    for i in range(len(grad)):
+                        print(
+                        f"------GP {str(i).center(3)} {str(grad[i]).center(27)} | {str(self.excitation_pool[i]).center(18)} | {self.excitation_pool_type[i].center(27)}"
+                        )
+                    print()
+                print(np.argmax(np.abs(grad)))
+                max_arg = np.argmax(np.abs(grad))
+                print()
+                print("### Index of Max grad :: ", end=" ")
+                print(np.argmax(np.abs(grad)))
+                print("### Number of excitation gradient > %e :: "%(epoch), end=" ")
+                print( (np.abs(grad) > epoch).sum())
+                max_arg = np.argmax(np.abs(grad))
+                max_short = np.flip(np.argsort(np.abs(grad)))
+                print(max_short)
+                print(skip_optimisation_counter)
+                bc= "BC"
+                print("SPIN_SS", end=" ")
+                diagonal_spin = self.sa_spin_penalty().diagonal()
+                for mi in diagonal_spin:
+                    print(mi, end=" ")
+                print()
+                print("### max excitation gradient > %e :: "%(epoch), end=" ")
+                print(np.max(np.abs(grad)))
+                if(np.max(np.abs(grad)) < epoch):
+                    nloop = i
+                    break
+                self.ups_layout.excitation_indices.append(np.array(self.excitation_pool[max_short[skip_optimisation_counter]])- self.num_inactive_spin_orbs)
+                self.ups_layout.excitation_operator_type.append(self.excitation_pool_type[max_short[skip_optimisation_counter]])
+                self.ups_layout.n_params += 1
+                self._thetas.append(0.0)
+                print()
+                print("Printing UPS layout")
+                print("#############")
+                print("H@I ", end=" ")
+                print(skip_optimisation)
+                print(skip_optimisation_counter)
+                if(skip_optimisation_counter == skip_optimisation):
+                    print("HI")
+                    self.run_wf_optimization_2step(optimiser_algo,  orbital_optimization=orbital_opt, tol=1e-10)
+                    skip_optimisation_counter = 0
+                else:
+                    skip_optimisation_counter += 1
+                #self.run_wf_optimization_2step("l-bfgs-b",  orbital_optimization=orbital_opt, tol=1e-10)
+                print()
+                print("------TP Printing the Optimised Theta")
+                print("------TP ############################")
                 print(
-                    f"------TP {str(self._thetas[mi]).center(27)} | {str(self.ups_layout.excitation_indices[mi]).center(18)} |{str(self.ups_layout.excitation_indices[mi] + self.num_inactive_spin_orbs ).center(18)} | {self.ups_layout.excitation_operator_type[mi].center(27)}"
+                        f"------TP {str("Thetas").center(27)} | {str("UPS Layout indices").center(18)} | {str("Excitation indices").center(18)} | {str("UPS Layout type").center(27)}"
+                    )
+                fwrite_f1.write(
+                        f"{str("Thetas").center(27)} | {str("UPS Layout indices").center(18)} | {str("Excitation indices").center(18)} | {str("UPS Layout type").center(27)}\n"
+                    )
+                for i in range(len(self._thetas)):
+                    fwrite_f1.write(f"{str(self._thetas[i]).center(27)} | {str(self.ups_layout.excitation_indices[i]).center(18)} |{str(self.ups_layout.excitation_indices[i] + self.num_inactive_spin_orbs ).center(18)} | {self.ups_layout.excitation_operator_type[i].center(27)}\n")
+                    print(
+                        f"------TP {str(self._thetas[i]).center(27)} | {str(self.ups_layout.excitation_indices[i]).center(18)} |{str(self.ups_layout.excitation_indices[i] + self.num_inactive_spin_orbs ).center(18)} | {self.ups_layout.excitation_operator_type[i].center(27)}"
+                    )
+                print("### Number of excitation gradient > %e :: "%(epoch), end=" ")
+                print( (np.abs(grad) > epoch).sum())
+                Hamiltonian = hamiltonian_0i_0a(
+                    self.h_mo,
+                    self.g_mo,
+                    self.num_inactive_orbs,
+                    self.num_active_orbs,
                 )
-                
-            print("### Number of excitation gradient > %e :: "%(epoch), end=" ")
-            print( (np.abs(grad) > epoch).sum())
+                EC = expectation_vector_SA(
+                    self.ci_coeffs,
+                    [Hamiltonian],
+                    self.ci_coeffs,
+                    self.ci_info,
+                    self.thetas,
+                    self.ups_layout,
+                )
+                print()
+                print("SS energies : Digonal Elements of the matrix = ")
+                for mi in EC.diagonal():
+                    print(mi,end=" ")
             
-            Hamiltonian = hamiltonian_0i_0a(
-                self.h_mo,
-                self.g_mo,
-                self.num_inactive_orbs,
-                self.num_active_orbs,
-            )
-            EC = expectation_vector_SA(
-                self.ci_coeffs,
-                [Hamiltonian],
-                self.ci_coeffs,
-                self.ci_info,
-                self.thetas,
-                self.ups_layout,
-            )
-            print()
-            print("SS energies : Digonal Elements of the matrix = ")
-            for mi in EC.diagonal():
-                print(mi,end=" ")
-            
-            print("Energy of the specific state = ", EC.diagonal()[self.specific_state])
-            E_val = self.sa_energy
-            print("Value of the Expectation Value (With Spin Penalty) = ", E_val )
-            E_adapt_val = abs(E_val - self.E_old_adapt)
-            print("Delta E_adapt = ", E_adapt_val)
-            self.E_old_adapt = E_val 
-            if(E_adapt_val < 1e-7):
-                print("Energy is good enough")
-                break
-            print()
-            print("Find the minimum energy you like")
-            print()
-            print()
+                print("\nEnergy of the specific state = ", EC.diagonal()[self.specific_state])
+                E_val = self.sa_energy
+                print("Value of the Expectation Value (With Spin Penalty) = ", E_val )
+                E_adapt_val = abs(E_val - self.E_old_adapt)
+                print("Delta E_adapt = ", E_adapt_val)
+                self.E_old_adapt = E_val 
+                if(E_adapt_val < 1e-8):
+                    print("Energy is good enough")
+                    break
+                print()
+                print("Find the minimum energy you like")
+                print()
+                print()
             #print(np.linalg.eigh(EC))
-        print("------TP  Number of Loop", end = " ")
-        print(nloop)
+            print("------TP  Number of Loop", end = " ")
+            print(nloop)
+    
+    
         
     
-      
-    
+
+    # def calculate_derivative_of_operator_pool(self):
+    #     Spin_tmp = spin_0i_0a(
+    #             self.h_mo,
+    #             self.g_mo,
+    #             self.num_inactive_orbs,
+    #             self.num_active_orbs,
+    #             diagonal=False
+    #         )
+    #     Spin = Spin_tmp*Spin_tmp + self.target_spin**2*FermionicOperator({}) - 2*self.target_spin*Spin_tmp
+        
+    #     Hamiltonian = hamiltonian_0i_0a(
+    #         self.h_mo,
+    #         self.g_mo,
+    #         self.num_inactive_orbs,
+    #         self.num_active_orbs,
+    #     ) + self.facSpin*Spin
+        
+    #     grad = []
+    #     print(len(self.excitation_pool_type))
+    #     for i in range(len(self.excitation_pool_type)):
+    #         T = None
+    #         if self.excitation_pool_type[i] == "single":
+    #             (i, a) = np.array(self.excitation_pool[i]) 
+    #             T = G1(i, a, True)
+    #         elif self.excitation_pool_type[i] == "double":
+    #             (i, j, a, b) = np.array(self.excitation_pool[i]) 
+    #             T = G2(i, j, a, b, True)
+                
+    #         if(self.state_specific):
+    #             gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+    #                                self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+    #             #exit()
+    #             gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+    #                                self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
+    #         else:
+    #             gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
+    #                                self.ci_info, self.thetas,self.ups_layout)
+    #             gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
+    #                                self.ci_info, self.thetas,self.ups_layout)
+    #         grad.append(gr)
+            
+    #     return grad
 
 
     def calculate_derivative_of_operator_pool(self):
@@ -495,18 +548,9 @@ class WaveFunctionSAADAPT:
         
         
         grad = []
-        #print("Number of excitation operators: ",len(self.excitation_pool_type))
-        #print("operator Index      Time Taken")
         Tm = time.time()
         Tap = []
-        print(len(self.excitation_pool_type))
         for i in range(len(self.excitation_pool_type)):
-        #for i in range(len(self.T_operators_type)):
-            #Ti = time.time()
-            #print(r" {:d}        {:f}".format(i,Ti - Tm))
-            #Tm = Ti
-            
-            #T = self.T_operators[i]
             T=None
             if self.excitation_pool_type[i] == "single":
                 (mi, ma) = np.array(self.excitation_pool[i]) 
@@ -515,40 +559,13 @@ class WaveFunctionSAADAPT:
                 (mi, mj, ma, mb) = np.array(self.excitation_pool[i]) 
                 T = G2(mi, mj, ma, mb, True)
             Tap.append(T)
-            #print(T.operators)
-            #fops.t1(T.operators)
-            #print("************************")
-            #print(self.state_specific)
-            if(self.state_specific):
-               gr = expectation_vector_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                  self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
-             
-               gr -= expectation_vector_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                  self.ci_info, self.thetas,self.ups_layout)[self.specific_state,self.specific_state]
-            else:
-               gr = expectation_value_SA(self.ci_coeffs,[T, Hamiltonian],  self.ci_coeffs,
-                                  self.ci_info, self.thetas,self.ups_layout)
-               gr -= expectation_value_SA(self.ci_coeffs,[ Hamiltonian, T],  self.ci_coeffs,
-                                self.ci_info, self.thetas,self.ups_layout)
-            grad.append(gr) 
-            print(i) 
         
-        print("#################################")
-        print(Tap)
-        grad2 = fops.derivative_theta_ket(self.ci_coeffs,Tap, [Hamiltonian],  self.ci_coeffs,
-                               self.ci_info, self.thetas,self.ups_layout, do_folding=True , specific_state=int(self.specific_state))
-
-        #for i in range(len(grad)):
-        #    print(f" {i} ::{self.state_specific} {self.specific_state}  {grad[i]} - {grad2[i]} = {grad[i] - grad2[i]}")
-
-        #exit()
-
-            
-        print(grad2)
-        exit()
+        grad2 = fops.derivative_theta_ket(self.ci_coeffs,Tap, [Hamiltonian],  self.ci_coeffs,self.ci_info, self.thetas,self.ups_layout, do_folding=True , specific_state=int(self.specific_state))  
         return grad2
             
-        
+    
+    
+            
     @property
     def kappa(self) -> list[float]:
         """Get orbital rotation parameters."""
@@ -884,7 +901,7 @@ class WaveFunctionSAADAPT:
         self,
         optimizer_name: str,
         orbital_optimization: bool = False,
-        tol: float = 1e-14,
+        tol: float = 1e-10,
         maxiter: int = 1000,
         is_silent_subiterations: bool = False,
     ) -> None:
@@ -904,7 +921,7 @@ class WaveFunctionSAADAPT:
         e_old = 1e12
         print("Full optimization")
         print("Iteration # | Iteration time [s] | Electronic energy [Hartree]")
-        for full_iter in range(0, int(maxiter - 50)):
+        for full_iter in range(0, int(maxiter)):
             full_start = time.time()
 
             # Do ansatz optimization
@@ -1279,7 +1296,6 @@ class WaveFunctionSAADAPT:
             self._old_opt_parameters = np.copy(parameters)
             return np.array(energies)
         E=0
-    
         if(self.state_specific):
             E = expectation_vector_SA(
                 self.ci_coeffs,
